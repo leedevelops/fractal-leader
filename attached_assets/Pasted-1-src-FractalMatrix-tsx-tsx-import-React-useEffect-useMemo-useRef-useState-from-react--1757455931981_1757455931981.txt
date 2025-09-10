@@ -1,0 +1,976 @@
+1. /src/FractalMatrix.tsx
+
+```tsx
+import React, {useEffect, useMemo, useRef, useState} from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  FMData, FMEdge, FMId, FMNode, FMNodeKind, FractalMatrixProps,
+  Theme,
+} from "./types";
+import {
+  DEFAULT_THEME,
+  clamp,
+  constructThemeVars,
+  ensurePlaceholders,
+  normalizeData,
+  generateInferredEdges,
+  layoutRings,
+  elementColor,
+  buildSacredOverlay,
+  toSVGString,
+  toPNGFromSVG,
+  toJSONWithState,
+  buildShareURL,
+  useResizeObserver,
+  findRepeatingTribeAcrossChapters,
+  findPropheticPairs,
+  findElementalCycles,
+  findBookDimensionCrossings,
+  goldenAngle,
+} from "./utils";
+import "./styles.css";
+
+// ──────────────────────────────────────────────────────────────────────────────
+// FractalMatrix — default export component (Hybrid SVG + Canvas renderer)
+// SVG handles nodes/labels/accessibility; Canvas renders edges + glow/halos for
+// a more cohesive, eye-pleasing aesthetic. Toggle via toolbar or auto-switch by
+// edge count threshold.
+// ──────────────────────────────────────────────────────────────────────────────
+
+const EDGE_CANVAS_THRESHOLD = 1200;
+
+const LAYERS_ORDER: FMNodeKind[] = [
+  "Hub", "Chapter", "Stone", "Tribe", "Prophet", "Apostle", "Frequency", "Book", "Dimension"
+];
+
+type FilterState = {
+  kinds: Set<FMNodeKind>;
+  elements: Set<string>;
+  tribes: Set<string>;
+  prophets: Set<string>;
+  apostles: Set<string>;
+  frequencies: Set<string>;
+  books: Set<string>;
+  dimensions: Set<string>;
+  mode: "AND"|"OR";
+};
+
+const DEFAULT_FILTERS: FilterState = {
+  kinds: new Set(), elements: new Set(), tribes: new Set(), prophets: new Set(), apostles: new Set(),
+  frequencies: new Set(), books: new Set(), dimensions: new Set(), mode: "OR"
+};
+
+const mysteryMask = (label: string, revealed: boolean) => revealed ? label : "•".repeat(Math.min(8, Math.max(3, label.length)));
+
+export default function FractalMatrix(props: FractalMatrixProps) {
+  const outerRef = useRef<HTMLDivElement>(null);
+  const svgRef = useRef<SVGSVGElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [size, setSize] = useState<{w:number,h:number}>({w: props.width ?? 1000, h: props.height ?? 700});
+  useResizeObserver(outerRef, (w,h)=> setSize({w,h}));
+
+  // Theme
+  const theme: Theme = useMemo(()=> ({...DEFAULT_THEME, ...props.theme}), [props.theme]);
+
+  // Normalize inputs & placeholders
+  const dims = useMemo(()=> ensurePlaceholders(props.fractalDimensions), [props.fractalDimensions]);
+  const baseData = useMemo(()=> normalizeData(props.data, dims), [props.data, dims]);
+
+  // Inferred edges (toggleable via internal UI)
+  const [inferRules, setInferRules] = useState<{tribeRepeat:boolean; prophApos:boolean; elemCycle:boolean; axisLink:boolean}>(
+    {tribeRepeat: true, prophApos: true, elemCycle: true, axisLink: true}
+  );
+  const data: FMData = useMemo(()=> ({
+    nodes: baseData.nodes,
+    edges: [...baseData.edges, ...generateInferredEdges(baseData, dims, inferRules)]
+  }), [baseData, dims, inferRules]);
+
+  // Layout (golden-angle polar + micro-jitter reduction)
+  const layout = useMemo(()=> layoutRings(data.nodes, size.w, size.h), [data.nodes, size]);
+
+  // Filters, selection, focus
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const [selectedId, setSelectedId] = useState<FMId | null>(typeof props.initialFocus === "string" && props.initialFocus.includes(":") ? props.initialFocus as FMId : null);
+  const [focusKind, setFocusKind] = useState<FMNodeKind | null>(typeof props.initialFocus === "string" && !props.initialFocus.includes(":") ? props.initialFocus as FMNodeKind : null);
+  const [mysteryProgress, setMysteryProgress] = useState<number>(0);
+  const [revealed, setRevealed] = useState<Set<FMId>>(new Set());
+
+  // Canvas mode toggle
+  const [forceCanvas, setForceCanvas] = useState<boolean>(false);
+
+  // Pattern recognition (heat overlays)
+  const patternSets = useMemo(()=>{
+    const tribe = findRepeatingTribeAcrossChapters(data);
+    const pairs = findPropheticPairs(data);
+    const cycles = findElementalCycles(data);
+    const crossings = findBookDimensionCrossings(data);
+    return {tribe, pairs, cycles, crossings};
+  },[data]);
+
+  // Derived maps
+  const nodeById = useMemo(()=> new Map(data.nodes.map(n=> [n.id, n])), [data.nodes]);
+  const edgesByNode = useMemo(()=> {
+    const m = new Map<FMId, FMEdge[]>();
+    data.edges.forEach(e=>{
+      if(!m.has(e.source)) m.set(e.source, []);
+      if(!m.has(e.target)) m.set(e.target, []);
+      m.get(e.source)!.push(e);
+      m.get(e.target)!.push(e);
+    });
+    return m;
+  }, [data.edges]);
+
+  // Accessibility: keyboard navigation
+  useEffect(()=>{
+    const onKey = (e: KeyboardEvent)=>{
+      if(e.key === "Escape"){ setSelectedId(null); setFocusKind(null); return; }
+      if(e.key === "/"){ e.preventDefault(); const el = document.getElementById("fm-search-input"); el?.focus(); }
+      if(e.key === "ArrowLeft" || e.key === "ArrowRight"){
+        e.preventDefault();
+        const dir = e.key === "ArrowLeft" ? -1 : 1;
+        const idx = focusKind ? LAYERS_ORDER.indexOf(focusKind) : 0;
+        const next = LAYERS_ORDER[clamp(idx+dir, 0, LAYERS_ORDER.length-1)];
+        setFocusKind(next);
+        emitDebug("focus:layer", next);
+      }
+      if(e.key === "g"){ setForceCanvas(v=> !v); }
+      if(e.key === "Enter" && focusKind){
+        const first = data.nodes.find(n=> n.kind === focusKind);
+        if(first) select(first.id);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return ()=> window.removeEventListener("keydown", onKey);
+  }, [focusKind, data.nodes]);
+
+  // Mystery mode progress
+  useEffect(()=>{
+    if(!props.mysteryMode) return;
+    const totalRevealable = data.nodes.length;
+    setMysteryProgress(Math.round((revealed.size/Math.max(1,totalRevealable))*100));
+  }, [revealed, data.nodes, props.mysteryMode]);
+
+  // Selection
+  const select = (id: FMId) => {
+    setSelectedId(id);
+    const node = nodeById.get(id) || undefined;
+    if(props.mysteryMode && node){
+      const next = new Set(revealed); next.add(id); setRevealed(next);
+    }
+    props.onSelect?.(id, node);
+    emitDebug("select:node", {id, node});
+  };
+
+  // Filter predicate
+  const visibleNode = (n: FMNode) => {
+    const checks: boolean[] = [];
+    if(filters.kinds.size) checks.push(filters.kinds.has(n.kind));
+    if(n.element && filters.elements.size) checks.push(filters.elements.has(n.element));
+    if(filters.tribes.size && n.kind === "Tribe") checks.push(filters.tribes.has(n.label));
+    if(filters.prophets.size && n.kind === "Prophet") checks.push(filters.prophets.has(n.label));
+    if(filters.apostles.size && n.kind === "Apostle") checks.push(filters.apostles.has(n.label));
+    if(filters.frequencies.size && n.kind === "Frequency") checks.push(filters.frequencies.has(n.label));
+    if(filters.books.size && n.kind === "Book") checks.push(filters.books.has(n.label));
+    if(filters.dimensions.size && n.kind === "Dimension") checks.push(filters.dimensions.has(n.label));
+    if(checks.length === 0) return true;
+    return filters.mode === "AND" ? checks.every(Boolean) : checks.some(Boolean);
+  };
+
+  // Renderer mode
+  const useCanvas = forceCanvas || data.edges.length >= EDGE_CANVAS_THRESHOLD;
+
+  // Export handlers
+  const handleExport = async () => {
+    if(!svgRef.current) return;
+    const svg = toSVGString(svgRef.current);
+    const png = await toPNGFromSVG(svgRef.current, size.w, size.h);
+    const json = toJSONWithState({data, filters, inferRules, focusKind, selectedId, mystery: props.mysteryMode});
+    const url = await buildShareURL(json);
+    props.onExport?.({png, svg, json, url});
+  };
+
+  // Audio (hover/select)
+  const audioRef = useRef<{ctx: AudioContext|null, mute:boolean}>({ctx:null, mute:false});
+  useEffect(()=>{
+    if(!props.enableAudio) return;
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    audioRef.current.ctx = ctx;
+    return ()=> ctx.close();
+  }, [props.enableAudio]);
+
+  const playHoverTone = (n: FMNode) => {
+    if(!props.enableAudio || audioRef.current.mute) return;
+    const ctx = audioRef.current.ctx; if(!ctx) return;
+    const o = ctx.createOscillator(); const g = ctx.createGain();
+    o.type = "sine"; const base = 196;
+    const mult = n.element === "Fire"?1.0:n.element==="Air"?1.25:n.element==="Water"?1.5:n.element==="Earth"?2.0:2.5;
+    o.frequency.value = base*mult;
+    g.gain.value = 0.0001; o.connect(g); g.connect(ctx.destination); o.start();
+    g.gain.linearRampToValueAtTime(0.02, ctx.currentTime+0.05);
+    g.gain.exponentialRampToValueAtTime(0.00001, ctx.currentTime+0.5);
+    o.stop(ctx.currentTime+0.55);
+  };
+
+  // Tooltip state
+  const [tip, setTip] = useState<{x:number,y:number,content:string}|null>(null);
+
+  // Canvas drawing
+  useEffect(()=>{
+    if(!useCanvas) return; // we're hybrid: edges + halos on canvas only in this mode
+    const canvas = canvasRef.current; if(!canvas) return;
+    canvas.width = size.w; canvas.height = size.h;
+    const ctx = canvas.getContext('2d'); if(!ctx) return;
+
+    // background
+    ctx.clearRect(0,0,size.w,size.h);
+    // subtle starfield
+    const stars = Math.round((size.w*size.h)/9000 * theme.backgroundStars.density);
+    ctx.save();
+    ctx.globalAlpha = 0.5;
+    for(let i=0;i<stars;i++){
+      const x = Math.random()*size.w, y=Math.random()*size.h; const r = Math.random()*1.2;
+      ctx.fillStyle = i%7===0? 'rgba(241,196,15,0.25)': 'rgba(255,255,255,0.18)';
+      ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.fill();
+    }
+    ctx.restore();
+
+    // edge layer (curved quadratic with slight normal offset)
+    const pos = layout.nodes;
+    ctx.lineCap = 'round';
+    for(const e of data.edges){
+      const s = pos.get(e.source); const t = pos.get(e.target);
+      if(!s || !t) continue;
+      const mx = (s.x+t.x)/2, my=(s.y+t.y)/2;
+      const nx = t.y - s.y, ny = -(t.x - s.x);
+      const nlen = Math.hypot(nx,ny)||1; const k = (e.relation==='PropheticApostolic'? 18: 10);
+      const cx = mx + (nx/nlen)*k; const cy = my + (ny/nlen)*k;
+      ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.quadraticCurveTo(cx, cy, t.x, t.y);
+      if(e.relation==='PropheticApostolic'){ ctx.setLineDash([6,5]); } else { ctx.setLineDash([]); }
+      const w = Math.max(0.6, (e.weight||1)*0.9);
+      ctx.lineWidth = w;
+      ctx.strokeStyle = e.relation==='ElementCycle' ? 'rgba(241,196,15,0.55)' : 'rgba(255,255,255,0.28)';
+      ctx.stroke();
+    }
+
+    // soft node halos (under SVG nodes)
+    for(const n of data.nodes){
+      if(!visibleNode(n)) continue;
+      const p = pos.get(n.id); if(!p) continue;
+      const color = elementColor(theme, n.element) || '#9aa4b3';
+      const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 18);
+      g.addColorStop(0, color.replace('#','')? colorToRGBA(color, 0.35): 'rgba(153,170,179,0.35)');
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x,p.y,18,0,Math.PI*2); ctx.fill();
+    }
+  }, [useCanvas, layout, data, size, theme, filters]);
+
+  // Utility: convert hex to rgba string
+  function colorToRGBA(hex: string, a:number){
+    if(hex.startsWith('#')){
+      const v = hex.slice(1);
+      const bigint = parseInt(v.length===3? v.split('').map(c=> c+c).join(''): v, 16);
+      const r = (bigint >> 16) & 255; const g = (bigint >> 8) & 255; const b = bigint & 255;
+      return `rgba(${r},${g},${b},${a})`;
+    }
+    return hex;
+  }
+
+  // Determine which renderer to use for edges (canvas vs svg)
+  const hub = layout.hub;
+
+  const renderEdgesSVG = () => (
+    <g className="fm-edges" aria-hidden>
+      {data.edges.map((e, i)=>{
+        const s = layout.nodes.get(e.source); const t = layout.nodes.get(e.target);
+        if(!s || !t) return null;
+        const dx = t.x - s.x, dy = t.y - s.y; const mx = s.x + dx/2, my = s.y + dy/2;
+        const nx = t.y - s.y, ny = -(t.x - s.x);
+        const nlen = Math.hypot(nx,ny)||1; const k = (e.relation==='PropheticApostolic'? 18: 10);
+        const cx = mx + (nx/nlen)*k, cy = my + (ny/nlen)*k;
+        const path = `M ${s.x},${s.y} Q ${cx},${cy} ${t.x},${t.y}`;
+        const isPA = e.relation === "PropheticApostolic";
+        return (
+          <path key={e.id||i} d={path} className={"fm-edge "+(isPA?"fm-edge-dashed":"")} strokeOpacity={0.35} />
+        );
+      })}
+    </g>
+  );
+
+  const renderNodesSVG = () => (
+    <g className="fm-nodes">
+      {data.nodes.filter(visibleNode).map(n=>{
+        const p = layout.nodes.get(n.id); if(!p) return null;
+        const isSel = selectedId === n.id; const color = elementColor(theme, n.element);
+        const label = props.mysteryMode ? mysteryMask(n.label, revealed.has(n.id) || isSel) : n.label;
+        return (
+          <g key={n.id}
+            role="button" tabIndex={0} aria-label={`${n.kind} ${n.label}`}
+            className={"fm-node fm-kind-"+n.kind.toLowerCase()}
+            onMouseEnter={(e)=>{ setTip({x:e.clientX, y:e.clientY, content:`${n.label} • ${n.kind}`}); playHoverTone(n); }}
+            onMouseLeave={()=> setTip(null)}
+            onClick={()=> select(n.id)}
+          >
+            <circle cx={p.x} cy={p.y} r={isSel?10:6} fill={color} className={n.label.endsWith("*")?"fm-node-placeholder":""} />
+            {(!props.mysteryMode || revealed.has(n.id) || isSel) && (
+              <text x={p.x+10} y={p.y+4} className="fm-label">{label}</text>
+            )}
+            {(patternSets.tribe.has(n.id) || patternSets.pairs.has(n.id) || patternSets.cycles.has(n.id) || patternSets.crossings.has(n.id)) && (
+              <circle cx={p.x} cy={p.y} r={isSel?16:12} className="fm-heat" />
+            )}
+          </g>
+        );
+      })}
+    </g>
+  );
+
+  return (
+    <div ref={outerRef} className="fm-root" style={{width: props.width?props.width:undefined, height: props.height?props.height:undefined}} data-theme-vars={constructThemeVars(theme)}>
+      {/* Toolbar */}
+      <div className="fm-toolbar">
+        <div className="fm-left">
+          <button className="fm-btn" onClick={()=> setFocusKind(null)}>Reset Focus</button>
+          <button className="fm-btn" onClick={()=> setFilters(DEFAULT_FILTERS)}>Reset Filters</button>
+          <label className="fm-check"><input type="checkbox" checked={inferRules.tribeRepeat} onChange={e=> setInferRules({...inferRules, tribeRepeat:e.target.checked})}/> TribeRepeat</label>
+          <label className="fm-check"><input type="checkbox" checked={inferRules.prophApos} onChange={e=> setInferRules({...inferRules, prophApos:e.target.checked})}/> Prophetic↔Apostolic</label>
+          <label className="fm-check"><input type="checkbox" checked={inferRules.elemCycle} onChange={e=> setInferRules({...inferRules, elemCycle:e.target.checked})}/> ElementCycle</label>
+          <label className="fm-check"><input type="checkbox" checked={inferRules.axisLink} onChange={e=> setInferRules({...inferRules, axisLink:e.target.checked})}/> AxisLink</label>
+          <button className="fm-btn" onClick={()=> setForceCanvas(v=> !v)} aria-pressed={forceCanvas}>Canvas Mode: {forceCanvas? 'On':'Off'}</button>
+          <button className="fm-btn" onClick={handleExport}>Export</button>
+        </div>
+        <div className="fm-right">
+          {props.mysteryMode && <div className="fm-meter" aria-label="Discovery progress"><div style={{width:`${mysteryProgress}%`}}/></div>}
+          <input id="fm-search-input" className="fm-search" placeholder="Search labels… (/)"></input>
+        </div>
+      </div>
+
+      {/* Main Stage */}
+      {/* Canvas sits behind SVG for halos/edges; SVG draws nodes, labels, overlays */}
+      {useCanvas && <canvas ref={canvasRef} className="fm-canvas" width={size.w} height={size.h} aria-hidden />}
+      <svg ref={svgRef} className="fm-stage" viewBox={`0 0 ${size.w} ${size.h}`} role="img" aria-label="Fractal Matrix">
+        {/* Background sacred overlays */}
+        {props.sacredOverlays?.map((kind, i)=> (
+          <g key={i} className="fm-sacred">
+            {buildSacredOverlay(kind, size.w/2, size.h/2, Math.min(size.w,size.h)*0.35)}
+          </g>
+        ))}
+
+        {/* Hub */}
+        <g className="fm-hub">
+          <circle cx={hub.x} cy={hub.y} r={18} className="fm-hub-core" />
+          {/* Hebrew letters י־ה־ו־ה */}
+          <text x={hub.x} y={hub.y-26} className="fm-hebrew" textAnchor="middle">י</text>
+          <text x={hub.x+24} y={hub.y} className="fm-hebrew">ה</text>
+          <text x={hub.x} y={hub.y+26} className="fm-hebrew" textAnchor="middle">ו</text>
+          <text x={hub.x-24} y={hub.y} className="fm-hebrew">ה</text>
+        </g>
+
+        {/* Edges (SVG fallback when canvas off) then nodes for z-order */}
+        {!useCanvas && renderEdgesSVG()}
+        {renderNodesSVG()}
+
+        {/* Meridian helpers every 5th chapter (AxisLink preview) */}
+        <g className="fm-meridians" aria-hidden>
+          {[5,10,15,20,25].map((ch)=>{
+            const nodeId: FMId = `Chapter:${ch}`;
+            const p = layout.nodes.get(nodeId); if(!p) return null;
+            return <line key={ch} x1={hub.x} y1={hub.y} x2={p.x} y2={p.y} className="fm-meridian"/>;
+          })}
+        </g>
+      </svg>
+
+      {/* Side Panel */}
+      <AnimatePresence>
+        {selectedId && (
+          <motion.aside className="fm-panel" initial={{x: 320, opacity: 0}} animate={{x:0, opacity:1}} exit={{x:320, opacity:0}}>
+            <PanelContent id={selectedId} node={nodeById.get(selectedId) || undefined} edges={edgesByNode.get(selectedId)||[]} onClose={()=> setSelectedId(null)} />
+          </motion.aside>
+        )}
+      </AnimatePresence>
+
+      {/* Tooltip */}
+      <AnimatePresence>
+        {tip && (
+          <motion.div className="fm-tooltip" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} style={{left: tip.x+12, top: tip.y+12}} role="tooltip">{tip.content}</motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function PanelContent({id, node, edges, onClose}:{id:FMId; node?:FMNode; edges:FMEdge[]; onClose:()=>void}){
+  return (
+    <div className="fm-panel-inner" aria-describedby="fm-panel-title">
+      <div className="fm-panel-head">
+        <strong id="fm-panel-title">{node?.label ?? id}</strong>
+        <button className="fm-btn" onClick={onClose}>Close</button>
+      </div>
+      <div className="fm-panel-body">
+        <div className="fm-row"><span>Kind</span><span>{node?.kind}</span></div>
+        {node?.element && <div className="fm-row"><span>Element</span><span>{node.element}</span></div>}
+        <div className="fm-row"><span>Connections</span><span>{edges.length}</span></div>
+        {node?.meta && (
+          <details>
+            <summary>Meta</summary>
+            <pre className="fm-pre">{JSON.stringify(node.meta, null, 2)}</pre>
+          </details>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function emitDebug(type: string, payload: unknown){
+  if(process.env.NODE_ENV === "development"){
+    (window as any).__FRACTAL_DEBUG__ = (window as any).__FRACTAL_DEBUG__ || [];
+    (window as any).__FRACTAL_DEBUG__.push({time: Date.now(), type, payload});
+  }
+}
+```
+
+2. /src/types.ts
+
+```ts
+export type FMId = string;
+export type FMNodeKind = "Chapter" | "Stone" | "Tribe" | "Prophet" | "Apostle" | "Frequency" | "Book" | "Element" | "Dimension" | "Hub";
+
+export interface FMNode {
+  id: FMId;
+  kind: FMNodeKind;
+  label: string;
+  layer: number; // 0..8 (0 hub)
+  meta?: Record<string, unknown>;
+  element?: "Fire"|"Air"|"Water"|"Earth"|"Plasma";
+  chapterIndex?: number; // 1..27
+}
+
+export interface FMEdge {
+  id: string;
+  source: FMId;
+  target: FMId;
+  relation: string;
+  weight?: number;
+  directed?: boolean;
+}
+
+export interface FMData { nodes: FMNode[]; edges: FMEdge[]; }
+
+export interface FractalDimensions {
+  chapters: number[]; // [1..27]
+  books: string[]; // ["Yod","Heh","Vav","Final Heh","Yeshua"]
+  elements: Array<"Fire"|"Air"|"Water"|"Earth"|"Plasma">;
+  stones: string[]; // caller-provided, may be partial
+  tribes: string[]; // caller-provided, may be partial
+  prophets: string[]; // may be partial
+  apostles: string[]; // may be partial
+  frequencies: string[]; // may be partial
+  dimensions: string[]; // ["1 Glory",...,"7 Name"]
+}
+
+export interface Theme {
+  colors: {
+    bg: string; text: string; glow: string; gold: string;
+  };
+  radii: { node: number; hub: number };
+  glows: { node: string; hub: string };
+  typography: { hebrewFontVar: string };
+  elementPalette: Record<"Fire"|"Air"|"Water"|"Earth"|"Plasma", string>;
+  backgroundStars: { density: number };
+}
+
+export interface FractalMatrixProps {
+  data: FMData;
+  fractalDimensions: FractalDimensions;
+  width?: number; height?: number;
+  theme?: Partial<Theme>;
+  initialFocus?: FMNodeKind | FMId;
+  mysteryMode?: boolean; // hides labels until discovered
+  enableAudio?: boolean; // frequency harmonics on hover/select
+  sacredOverlays?: Array<"StarOfDavid"|"FlowerOfLife"|"MetatronCube">;
+  onSelect?(id: FMId, node?: FMNode): void;
+  onExport?(payload: { png: Blob; svg: string; json: string; url: string }): void;
+}
+```
+
+3. /src/utils.ts
+
+```ts
+import React from "react";
+import { FMData, FMEdge, FMId, FMNode, FMNodeKind, FractalDimensions, Theme } from "./types";
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Constants & Theme
+// ──────────────────────────────────────────────────────────────────────────────
+export const DEFAULT_THEME: Theme = {
+  colors: { bg: "#0a0e1a", text: "#e6f0ff", glow: "#4da3ff", gold: "#f1c40f" },
+  radii: { node: 6, hub: 18 },
+  glows: { node: "0 0 10px rgba(77,163,255,0.35)", hub: "0 0 16px rgba(241,196,15,0.45)" },
+  typography: { hebrewFontVar: "var(--font-hebrew, system-ui, -apple-system, Segoe UI, Roboto, sans-serif)" },
+  elementPalette: { Fire: "#ff4d4d", Air: "#4d8fff", Water: "#1fbfbf", Earth: "#2fbf71", Plasma: "#f1c40f" },
+  backgroundStars: { density: 0.6 }
+};
+
+export const goldenAngle = Math.PI * (3 - Math.sqrt(5)); // ~2.399963...
+
+export const clamp = (v:number, a:number, b:number) => Math.max(a, Math.min(b, v));
+export const constructThemeVars = (t: Theme) => JSON.stringify(t); // for CSS var overrides if needed
+
+export const elementColor = (theme: Theme, element?: FMNode["element"]) => {
+  if(!element) return "#9aa4b3";
+  return theme.elementPalette[element];
+};
+
+export const makeId = (kind: FMNodeKind, value: string|number): FMId => `${kind}:${value}`;
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Data Normalization & Placeholders
+// ──────────────────────────────────────────────────────────────────────────────
+export function ensurePlaceholders(fd: FractalDimensions): FractalDimensions {
+  // Chapters 1..27 (force)
+  const chapters = Array.from({length:27}, (_,i)=> i+1);
+  // The provided arrays may be partial – keep them, but don’t invent labels.
+  const need = (arr: string[], count: number, label: string) => {
+    const a = arr ? [...arr] : [];
+    while(a.length < count) a.push(`Unknown ${label} ${a.length+1}*`);
+    return a;
+  };
+  return {
+    chapters,
+    books: fd.books && fd.books.length? fd.books: ["Yod","Heh","Vav","Final Heh","Yeshua"],
+    elements: fd.elements && fd.elements.length? fd.elements as any: ["Fire","Air","Water","Earth","Plasma"],
+    stones: need(fd.stones||[], 12, "Stone"),
+    tribes: need(fd.tribes||[], 12, "Tribe"),
+    prophets: fd.prophets||[],
+    apostles: fd.apostles||[],
+    frequencies: fd.frequencies||[],
+    dimensions: fd.dimensions && fd.dimensions.length? fd.dimensions: ["1 Glory","2 Presence","3 Voice","4 Word","5 Image","6 Spirit","7 Name"],
+  };
+}
+
+export function normalizeData(data: FMData, fd: FractalDimensions): FMData {
+  const nodes = new Map<FMId, FMNode>();
+  const push = (n: FMNode) => { nodes.set(n.id, n); };
+
+  // Hub
+  push({id: makeId("Hub","YHWH"), kind:"Hub", label:"YHWH", layer:0});
+
+  // Chapters
+  fd.chapters.forEach(ch=> push({id: makeId("Chapter", ch), kind:"Chapter", label: String(ch), layer:1, chapterIndex: ch }));
+  // Stones, Tribes, Prophets, Apostles, Frequencies, Books, Dimensions
+  fd.stones.forEach((s)=> push({id: makeId("Stone", s), kind:"Stone", label: s, layer:2}));
+  fd.tribes.forEach((t)=> push({id: makeId("Tribe", t), kind:"Tribe", label: t, layer:3}));
+  fd.prophets.forEach((p)=> push({id: makeId("Prophet", p), kind:"Prophet", label: p, layer:4}));
+  fd.apostles.forEach((a)=> push({id: makeId("Apostle", a), kind:"Apostle", label: a, layer:5}));
+  fd.frequencies.forEach((f)=> push({id: makeId("Frequency", f), kind:"Frequency", label: f, layer:6}));
+  fd.books.forEach((b)=> push({id: makeId("Book", b), kind:"Book", label: b, layer:7}));
+  fd.dimensions.forEach((d)=> push({id: makeId("Dimension", d), kind:"Dimension", label: d, layer:8}));
+
+  // Merge user-provided nodes (override/add)
+  for(const n of (data.nodes||[])) nodes.set(n.id, n);
+
+  // Edges: accept user-provided; do not fabricate here
+  const edges: FMEdge[] = [...(data.edges||[])];
+
+  return { nodes: [...nodes.values()], edges };
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Inferred Edges (optional, toggle)
+// ──────────────────────────────────────────────────────────────────────────────
+export function generateInferredEdges(data: FMData, fd: FractalDimensions, rules: {tribeRepeat:boolean; prophApos:boolean; elemCycle:boolean; axisLink:boolean}): FMEdge[] {
+  const edges: FMEdge[] = [];
+  const nodeMap = new Map(data.nodes.map(n=> [n.id, n] as const));
+
+  const byKind = (k: FMNodeKind) => data.nodes.filter(n=> n.kind===k);
+
+  // TribeRepeat: connect chapters that share a tribe via explicit chapter↔tribe edges.
+  if(rules.tribeRepeat){
+    const tribes = byKind("Tribe");
+    const edgesByNode = indexEdges(data.edges);
+    for(const tr of tribes){
+      const touching = edgesByNode.get(tr.id)||[];
+      const chapters = new Set<string>();
+      for(const e of touching){
+        const other = e.source===tr.id? e.target: e.source;
+        if(nodeMap.get(other)?.kind === "Chapter") chapters.add(other);
+      }
+      const arr = [...chapters];
+      for(let i=0;i<arr.length;i++) for(let j=i+1;j<arr.length;j++){
+        edges.push({id:`infer:TribeRepeat:${tr.id}:${arr[i]}:${arr[j]}`, source: arr[i], target: arr[j], relation:"TribeRepeat"});
+      }
+    }
+  }
+
+  // PropheticApostolic: prophet & apostle share any neighbor (chapter/dimension)
+  if(rules.prophApos){
+    const prophets = byKind("Prophet");
+    const apostles = byKind("Apostle");
+    const edgesByNode = indexEdges(data.edges);
+    for(const p of prophets){
+      const pNeighbors = new Set((edgesByNode.get(p.id)||[]).map(e=> e.source===p.id? e.target: e.source));
+      for(const a of apostles){
+        const aNeighbors = new Set((edgesByNode.get(a.id)||[]).map(e=> e.source===a.id? e.target: e.source));
+        const intersection = [...pNeighbors].some(x=> aNeighbors.has(x));
+        if(intersection){
+          edges.push({id:`infer:PropheticApostolic:${p.id}:${a.id}`, source:p.id, target:a.id, relation:"PropheticApostolic"});
+        }
+      }
+    }
+  }
+
+  // ElementCycle: Fire→Air→Water→Earth→Plasma inside a chapter (only if elements are explicitly linked)
+  if(rules.elemCycle){
+    const cycle = ["Fire","Air","Water","Earth","Plasma"] as const;
+    const edgesByNode = indexEdges(data.edges);
+    const chapters = byKind("Chapter");
+    for(const ch of chapters){
+      const neighbors = new Set((edgesByNode.get(ch.id)||[]).map(e=> e.source===ch.id? e.target: e.source));
+      const elementNodes = [...neighbors]
+        .map(id=> nodeMap.get(id))
+        .filter(n=> n && n.kind === "Element") as FMNode[];
+      if(elementNodes.length>=2){
+        for(let i=0;i<cycle.length;i++){
+          const a = elementNodes.find(n=> n.label === cycle[i]);
+          const b = elementNodes.find(n=> n.label === cycle[(i+1)%cycle.length]);
+          if(a && b){
+            edges.push({id:`infer:ElementCycle:${ch.id}:${a.id}:${b.id}`, source:a.id, target:b.id, relation:"ElementCycle", directed:true});
+          }
+        }
+      }
+    }
+  }
+
+  // AxisLink: hub→every 5th chapter meridian (visual aid)
+  if(rules.axisLink){
+    const hub = makeId("Hub","YHWH");
+    for(let ch=5; ch<=25; ch+=5){
+      const cid = makeId("Chapter", ch);
+      if(nodeMap.has(cid)) edges.push({id:`infer:AxisLink:${ch}`, source:hub, target:cid, relation:"AxisLink"});
+    }
+  }
+
+  return edges;
+}
+
+function indexEdges(edges: FMEdge[]): Map<FMId, FMEdge[]> {
+  const m = new Map<FMId, FMEdge[]>();
+  edges.forEach(e=>{
+    if(!m.has(e.source)) m.set(e.source, []);
+    if(!m.has(e.target)) m.set(e.target, []);
+    m.get(e.source)!.push(e); m.get(e.target)!.push(e);
+  });
+  return m;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Layout (golden-angle polar rings + cached positions)
+// Produces pleasing distribution with slight per-layer phase offsets.
+// ──────────────────────────────────────────────────────────────────────────────
+export function layoutRings(nodes: FMNode[], width: number, height: number){
+  const cx = width/2, cy = height/2;
+  const R = Math.min(width, height)/2 - 28;
+  const positions = new Map<FMId, {x:number,y:number}>();
+
+  const byLayer = groupBy(nodes, n=> n.layer);
+  const layerCount = 8; // 0..8 (0 hub)
+  const phaseOffset = (layer:number)=> (layer*0.23) % (Math.PI*2); // tuned
+
+  // hub
+  positions.set(makeId("Hub","YHWH"), {x:cx, y:cy});
+
+  for(let layer=1; layer<=layerCount; layer++){
+    const arr = byLayer.get(layer) || [];
+    if(arr.length===0) continue;
+    const t = layer/8; // 0..1
+    const radius = easeInOutCubic(t) * R;
+
+    // Use golden-angle spacing for beauty; chapters get deterministic ordering by chapterIndex
+    let ordered = arr;
+    if(arr[0]?.kind === "Chapter"){
+      ordered = [...arr].sort((a,b)=> (a.chapterIndex||0) - (b.chapterIndex||0));
+    } else {
+      // stable but organic
+      ordered = [...arr].sort((a,b)=> a.id.localeCompare(b.id));
+    }
+
+    for(let i=0;i<ordered.length;i++){
+      const theta = phaseOffset(layer) + (i*goldenAngle) % (Math.PI*2);
+      const x = cx + radius * Math.cos(theta);
+      const y = cy + radius * Math.sin(theta);
+      positions.set(ordered[i].id, {x,y});
+    }
+  }
+
+  return { nodes: positions, hub: {x: cx, y: cy} };
+}
+
+function groupBy<T, K>(arr:T[], key:(v:T)=>K){
+  const m = new Map<K, T[]>();
+  for(const v of arr){ const k = key(v); if(!m.has(k)) m.set(k, []); m.get(k)!.push(v); }
+  return m;
+}
+
+function easeInOutCubic(t:number){ return t<0.5 ? 4*t*t*t : 1 - Math.pow(-2*t + 2, 3)/2; }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Exporters
+// ──────────────────────────────────────────────────────────────────────────────
+export function toSVGString(el: SVGSVGElement): string {
+  const clone = el.cloneNode(true) as SVGSVGElement;
+  clone.setAttribute("xmlns","http://www.w3.org/2000/svg");
+  return new XMLSerializer().serializeToString(clone);
+}
+
+export async function toPNGFromSVG(el: SVGSVGElement, width:number, height:number): Promise<Blob>{
+  const svg = toSVGString(el);
+  const img = new Image();
+  const blob = new Blob([svg], {type: 'image/svg+xml'});
+  const url = URL.createObjectURL(blob);
+  await new Promise<void>(res=> { img.onload = ()=> res(); img.src = url; });
+  const canvas = document.createElement('canvas'); canvas.width=width; canvas.height=height;
+  const ctx = canvas.getContext('2d')!; ctx.drawImage(img,0,0);
+  URL.revokeObjectURL(url);
+  return await new Promise(resolve=> canvas.toBlob(b=> resolve(b||new Blob()), 'image/png')) as Blob;
+}
+
+export function toJSONWithState(state: any): string { return JSON.stringify(state); }
+
+export async function buildShareURL(json: string): Promise<string>{
+  try{
+    if((window as any).CompressionStream){
+      const cs = new (window as any).CompressionStream('deflate');
+      const enc = new TextEncoder(); const stream = new Response(enc.encode(json).pipeThrough(cs));
+      const buf = await stream.arrayBuffer();
+      const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+      return `#f=${b64}`;
+    }
+  }catch{}
+  return `#f=${btoa(unescape(encodeURIComponent(json)))}`;
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Pattern Recognition (minimal, deterministic; no domain invention)
+// ──────────────────────────────────────────────────────────────────────────────
+export function findRepeatingTribeAcrossChapters(data: FMData): Set<FMId>{
+  const set = new Set<FMId>();
+  const edgesBy = indexEdges(data.edges);
+  for(const n of data.nodes){
+    if(n.kind!=="Tribe") continue;
+    const chapters = new Set((edgesBy.get(n.id)||[]).map(e=> e.source===n.id? e.target: e.source).filter(id=> data.nodes.find(nn=> nn.id===id && nn.kind==="Chapter")));
+    if(chapters.size>=2) chapters.forEach(id=> set.add(id as FMId));
+  }
+  return set;
+}
+export function findPropheticPairs(data: FMData): Set<FMId>{
+  const s = new Set<FMId>();
+  const edgesBy = indexEdges(data.edges);
+  const prophets = data.nodes.filter(n=> n.kind==="Prophet");
+  for(const p of prophets){
+    const neighbors = new Set((edgesBy.get(p.id)||[]).map(e=> e.source===p.id? e.target: e.source));
+    neighbors.forEach(id=> s.add(id));
+  }
+  return s;
+}
+export function findElementalCycles(data: FMData): Set<FMId>{
+  const s = new Set<FMId>();
+  data.edges.filter(e=> e.relation==="ElementCycle").forEach(e=> { s.add(e.source); s.add(e.target); });
+  return s;
+}
+export function findBookDimensionCrossings(data: FMData): Set<FMId>{
+  const s = new Set<FMId>();
+  const byId = new Map(data.nodes.map(n=> [n.id, n] as const));
+  for(const e of data.edges){
+    const a = byId.get(e.source), b = byId.get(e.target);
+    if(!a || !b) continue;
+    if((a.kind==="Book" && b.kind==="Dimension") || (b.kind==="Book" && a.kind==="Dimension")){
+      s.add(a.id); s.add(b.id);
+    }
+  }
+  return s;
+}
+```
+
+4. /src/styles.css
+
+```css
+:root{
+  --bg:#0a0e1a; --text:#e6f0ff; --glow:rgba(77,163,255,0.45); --gold:#f1c40f;
+  --fire:#ff4d4d; --air:#4d8fff; --water:#1fbfbf; --earth:#2fbf71; --plasma:#f1c40f;
+}
+.fm-root{ position:relative; background:
+  radial-gradient(1200px 800px at 50% 50%, #0f1830 0%, #090c18 50%, #05070d 100%);
+  color:var(--text); font: 13px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  overflow:hidden; border-radius:14px; box-shadow:0 0 0 1px rgba(255,255,255,0.04) inset;
+}
+.fm-stage{ width:100%; height:100%; filter: drop-shadow(0 0 8px rgba(0,0,0,0.35)); position:relative; z-index:2; }
+.fm-canvas{ position:absolute; inset:0; width:100%; height:100%; z-index:1; }
+.fm-toolbar{ position:absolute; top:8px; left:8px; right:8px; display:flex; align-items:center; justify-content:space-between; gap:8px; z-index:3; }
+.fm-btn{ background:rgba(255,255,255,0.06); color:var(--text); border:1px solid rgba(255,255,255,0.1); border-radius:10px; padding:6px 10px; cursor:pointer; }
+.fm-check{ margin-left:8px; opacity:0.9; }
+.fm-search{ background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.12); border-radius:10px; padding:6px 10px; color:var(--text); }
+.fm-meter{ width:120px; height:8px; background:rgba(255,255,255,0.08); border-radius:999px; overflow:hidden; margin-right:8px; }
+.fm-meter>div{ height:100%; background:linear-gradient(90deg, var(--gold), #ffd96b); }
+
+.fm-hub-core{ fill: rgba(241,196,15,0.2); stroke: var(--gold); stroke-width:1.5; filter: drop-shadow(0 0 8px rgba(241,196,15,0.6)); }
+.fm-hebrew{ font-size:16px; fill: var(--gold); font-family: var(--font-hebrew, system-ui, -apple-system, Segoe UI, Roboto, sans-serif); }
+
+.fm-edge{ stroke: rgba(255,255,255,0.35); fill:none; stroke-width:1.2; }
+.fm-edge-dashed{ stroke-dasharray:5 4; }
+
+.fm-node{ cursor:pointer; }
+.fm-node circle{ stroke: rgba(255,255,255,0.35); stroke-width:0.8; filter: drop-shadow(0 0 6px var(--glow)); }
+.fm-node-placeholder{ stroke-dasharray:2 2; opacity:0.85; }
+.fm-label{ font-size:11px; fill: var(--text); opacity:0.9; }
+.fm-heat{ fill:none; stroke: var(--gold); stroke-width:1.2; stroke-opacity:0.8; }
+.fm-meridian{ stroke: rgba(255,255,255,0.08); stroke-width:0.8; }
+
+.fm-sacred-line{ stroke: var(--gold); stroke-opacity:0.25; stroke-width:0.8; fill:none; }
+
+.fm-tooltip{ position:fixed; background:#0c1224; border:1px solid rgba(255,255,255,0.15); color:var(--text); padding:6px 8px; border-radius:10px; pointer-events:none; z-index:5; box-shadow:0 8px 24px rgba(0,0,0,0.35); }
+
+.fm-panel{ position:absolute; right:0; top:0; bottom:0; width:300px; background:rgba(11,16,28,0.9); border-left:1px solid rgba(255,255,255,0.06); z-index:4; backdrop-filter: blur(6px); }
+.fm-panel-inner{ display:flex; flex-direction:column; height:100%; }
+.fm-panel-head{ display:flex; align-items:center; justify-content:space-between; padding:10px; border-bottom:1px solid rgba(255,255,255,0.06); }
+.fm-panel-body{ padding:10px; display:grid; gap:6px; }
+.fm-row{ display:flex; align-items:center; justify-content:space-between; opacity:0.95; }
+.fm-pre{ font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:11px; color:#cde; background:#0a0f22; padding:8px; border-radius:8px; overflow:auto; }
+```
+
+5. /demo/App.tsx
+
+```tsx
+import React from "react";
+import FractalMatrix from "../src/FractalMatrix";
+import { FMData, FractalDimensions } from "../src/types";
+
+// Minimal explicit dataset (tiny) — demonstrates placeholders for missing arrays
+const fractalDimensions: FractalDimensions = {
+  chapters: [], // ignored; component forces 1..27
+  books: ["Yod","Heh","Vav","Final Heh","Yeshua"],
+  elements: ["Fire","Air","Water","Earth","Plasma"],
+  stones: ["Sardius","Topaz","Emerald"], // partial → placeholders auto added
+  tribes: ["Reuben","Simeon","Levi"], // partial
+  prophets: ["Hosea","Joel"],
+  apostles: ["Peter","James"],
+  frequencies: ["Deep Stillness","Triune Tone"],
+  dimensions: ["1 Glory","2 Presence","3 Voice","4 Word","5 Image","6 Spirit","7 Name"],
+};
+
+const data: FMData = {
+  nodes: [
+    // Example explicit node tying chapter→tribe/prophet/apostle/element (minimal)
+    { id: "Chapter:1", kind: "Chapter", label: "1", layer:1, chapterIndex:1, element: "Fire" },
+    { id: "Tribe:Reuben", kind:"Tribe", label:"Reuben", layer:3 },
+    { id: "Prophet:Hosea", kind:"Prophet", label:"Hosea", layer:4 },
+    { id: "Apostle:Peter", kind:"Apostle", label:"Peter", layer:5 },
+    { id: "Element:Fire", kind:"Element", label:"Fire", layer:1, element: "Fire" },
+  ],
+  edges: [
+    { id:"e1", source:"Chapter:1", target:"Tribe:Reuben", relation:"Belongs" },
+    { id:"e2", source:"Chapter:1", target:"Prophet:Hosea", relation:"Belongs" },
+    { id:"e3", source:"Chapter:1", target:"Apostle:Peter", relation:"Belongs" },
+    { id:"e4", source:"Chapter:1", target:"Element:Fire", relation:"Element" },
+  ]
+};
+
+export default function App(){
+  return (
+    <div style={{height:"100vh", padding:16}}>
+      <FractalMatrix
+        data={data}
+        fractalDimensions={fractalDimensions}
+        sacredOverlays={["StarOfDavid","FlowerOfLife"]}
+        mysteryMode
+        enableAudio={false}
+        onExport={(p)=>{
+          console.log("Exported:", p);
+        }}
+      />
+    </div>
+  );
+}
+```
+
+6. README.md
+
+````md
+# Fractal Matrix (React + TypeScript)
+
+Interactive **Fractal Matrix** visualization for a biblical leadership framework. **Hybrid renderer:** SVG for nodes/labels/accessibility, **Canvas** for edges + glow halos (more cohesive, eye‑pleasing). Built with **React 18**, **TypeScript**, lightweight helpers, and **Framer Motion**.
+
+## Install
+
+```bash
+npm i react framer-motion
+# copy `/src` + `/demo` + `/tests` into your project
+````
+
+## Quick Start
+
+```tsx
+import FractalMatrix from "./src/FractalMatrix";
+import { FMData, FractalDimensions } from "./src/types";
+
+const dims: FractalDimensions = {
+  chapters: [],
+  books: ["Yod","Heh","Vav","Final Heh","Yeshua"],
+  elements: ["Fire","Air","Water","Earth","Plasma"],
+  stones: ["Sardius"], tribes: ["Reuben"], prophets: ["Hosea"], apostles:["Peter"],
+  frequencies:["Deep Stillness"],
+  dimensions: ["1 Glory","2 Presence","3 Voice","4 Word","5 Image","6 Spirit","7 Name"],
+};
+
+const data: FMData = { nodes: [], edges: [] };
+
+<FractalMatrix data={data} fractalDimensions={dims} mysteryMode sacredOverlays={["StarOfDavid"]} />;
+```
+
+> **Safety**: Partial arrays are OK. Missing values become **placeholders** like `Unknown Tribe 3*` (dotted halo). **No domain claims** are invented.
+
+## Props
+
+| Prop                | Type                                                    | Default         | Notes                                                       |
+| ------------------- | ------------------------------------------------------- | --------------- | ----------------------------------------------------------- |
+| `data`              | `FMData`                                                | —               | Your explicit nodes/edges.                                  |
+| `fractalDimensions` | `FractalDimensions`                                     | —               | Category lists; placeholders auto‑fill missing/short lists. |
+| `width, height`     | `number`                                                | auto‑fit parent | `ResizeObserver` when omitted.                              |
+| `theme`             | `Partial<Theme>`                                        | dark‑cosmic     | Override palette/typography; element colors drive halos.    |
+| `initialFocus`      | `FMNodeKind \| FMId`                                    | —               | Focus a layer or node on mount.                             |
+| `mysteryMode`       | `boolean`                                               | `false`         | Hide labels; reveal on hover/select; progress meter.        |
+| `enableAudio`       | `boolean`                                               | `false`         | WebAudio tones on hover/select.                             |
+| `sacredOverlays`    | `("StarOfDavid" \| "FlowerOfLife" \| "MetatronCube")[]` | —               | Faint golden geometry beneath nodes.                        |
+| `onSelect`          | `(id,node?)=>void`                                      | —               | Node selection.                                             |
+| `onExport`          | `({png,svg,json,url})=>void`                            | —               | Export handlers.                                            |
+
+## Aesthetic Layout
+
+* **Golden‑angle** radial spacing per ring for natural uniformity.
+* **Ease‑based ring radii** for balanced negative space.
+* Per‑layer phase offsets for visual rhythm.
+* Meridians from hub to chapters 5/10/15/20/25 (visual axis aid).
+
+## Renderer
+
+* **Canvas** draws: edges (curved, dashed for Prophetic↔Apostolic), soft node halos, starfield.
+* **SVG** draws: hub, sacred overlays, nodes, labels, heat overlays, meridians. Accessibility preserved.
+* Toggle with toolbar **“Canvas Mode”** or press \`\`. Auto‑enables when edges ≥ **1200**.
+
+## Derived Edge Rules (toggleable)
+
+* `TribeRepeat` — connects chapters that share a tribe via your explicit edges.
+* `PropheticApostolic` — prophet↔apostle pairs that touch the same neighbor.
+* `ElementCycle` — Fire→Air→Water→Earth→Plasma cycles within a chapter if explicitly linked.
+* `AxisLink` — hub→chapter meridians every 5 chapters (visual aid only).
+
+## Export
+
+* **SVG** (string), **PNG** (`Blob`), and **JSON** (data + UI state). `buildShareURL` emits `#f=...` (deflate if supported; else base64).
+
+## Keyboard Shortcuts
+
+* `Tab` cycle focus (browser); `Enter` select; `Esc` clear; `←/→` rotate focused layer; `/` focus search; \`\` toggle Canvas.
+
+## Performance Notes
+
+* SVG nodes/labels keep crisp text & a11y.
+* Canvas edges maintain flow & glow; ≥1200 edges recommended.
+* Layout is O(n) and

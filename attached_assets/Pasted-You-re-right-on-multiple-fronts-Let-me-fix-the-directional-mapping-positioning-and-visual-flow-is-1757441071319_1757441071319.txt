@@ -1,0 +1,114 @@
+You're right on multiple fronts. Let me fix the directional mapping, positioning, and visual flow issues.
+
+**PROMPT FOR REPLIT AI - Matrix Flow & Direction Fixes:**
+
+Fix the directional mapping and visual positioning in the matrix component:
+
+**1. CORRECT DIRECTIONAL MAPPING:**
+```tsx
+// Fix the chapter-to-direction mapping:
+const directionMapping = {
+  North: [1, 2, 3, 4, 5],    // Book 1: Yod (Red/Fire)
+  East: [6, 7, 8, 9, 10],    // Book 2: Heh (Blue/Air) 
+  South: [11, 12, 13, 14, 15], // Book 3: Vav (Teal/Water)
+  West: [16, 17, 18, 19, 20],  // Book 4: Final Heh (Green/Earth)
+  Center: [21, 22, 23, 24, 25] // Book 5: Yeshua (Gold/Plasma)
+};
+
+// Update chapter data directions accordingly
+```
+
+**2. FIX YHWH QUADRANT POSITIONING:**
+```tsx
+const yhwhQuadrants = [
+  { letter: "י", bookNumber: 1, position: "top-0 left-1/2 transform -translate-x-1/2 -translate-y-4", color: "red", chapters: "1-5", title: "YOD - North", direction: "North" },
+  { letter: "ה", bookNumber: 2, position: "top-1/2 right-0 transform translate-x-4 -translate-y-1/2", color: "blue", chapters: "6-10", title: "HEH - East", direction: "East" },
+  { letter: "ו", bookNumber: 3, position: "top-1/2 left-0 transform -translate-x-4 -translate-y-1/2", color: "teal", chapters: "11-15", title: "VAV - South", direction: "South" },
+  { letter: "ה", bookNumber: 4, position: "bottom-0 left-1/2 transform -translate-x-1/2 translate-y-4", color: "green", chapters: "16-20", title: "FINAL HEH - West", direction: "West" }
+];
+```
+
+**3. IMPROVE GEOMETRY ICONS:**
+```tsx
+const getGeometryIcon = (geometry: string): string => {
+  const icons: { [key: string]: string } = {
+    // More descriptive/recognizable icons
+    square: "▪️",
+    triangle: "🔺", 
+    spiral: "🌀",
+    cube: "🔳",
+    circle: "⭕",
+    tetrahedron: "🔺",
+    hexagon: "⬡",
+    octahedron: "💠",
+    tree: "🌳",
+    icosahedron: "🔸",
+    prism: "📐",
+    mobius: "∞",
+    pentagon: "⬟",
+    grid: "⊞",
+    mirror: "🪞",
+    flower: "🌸",
+    star: "⭐",
+    torus: "🍩",
+    "star-tetrahedron": "✨",
+    circles: "◯",
+    infinity: "∞",
+    network: "🕸️"
+  };
+  return icons[geometry] || "◆";
+};
+```
+
+**4. IMPROVE VISUAL FLOW:**
+```tsx
+// Better visual hierarchy in the matrix center
+<div className="relative w-96 h-96 mx-auto">
+  {/* Connecting lines that actually connect the quadrants properly */}
+  <svg className="absolute inset-0 w-full h-full" viewBox="0 0 384 384">
+    {/* Vertical line: North to South */}
+    <line x1="192" y1="48" x2="192" y2="336" stroke="#ef4444" strokeWidth="3" opacity="0.6"/>
+    {/* Horizontal line: East to West */}
+    <line x1="48" y1="192" x2="336" y2="192" stroke="#3b82f6" strokeWidth="3" opacity="0.6"/>
+  </svg>
+  
+  {/* Position quadrants to align with actual compass directions */}
+</div>
+```
+
+**5. FIX DIRECTIONAL COMPASS:**
+```tsx
+// Make compass match the actual positioning
+<div className="relative w-64 h-64 mx-auto">
+  {/* North - Chapters 1-5 (Red) */}
+  <div className="absolute top-0 left-1/2 transform -translate-x-1/2">
+    <div className="w-16 h-16 bg-red-500/30 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all border-2 border-red-400"
+         onClick={() => setActiveBook(1)}>
+      <span className="text-xs text-red-300 font-bold">1-5</span>
+    </div>
+  </div>
+  {/* East - Chapters 6-10 (Blue) */}
+  <div className="absolute top-1/2 right-0 transform -translate-y-1/2">
+    <div className="w-16 h-16 bg-blue-500/30 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all border-2 border-blue-400"
+         onClick={() => setActiveBook(2)}>
+      <span className="text-xs text-blue-300 font-bold">6-10</span>
+    </div>
+  </div>
+  {/* South - Chapters 11-15 (Teal) */}
+  <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2">
+    <div className="w-16 h-16 bg-teal-500/30 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all border-2 border-teal-400"
+         onClick={() => setActiveBook(3)}>
+      <span className="text-xs text-teal-300 font-bold">11-15</span>
+    </div>
+  </div>
+  {/* West - Chapters 16-20 (Green) */}
+  <div className="absolute top-1/2 left-0 transform -translate-y-1/2">
+    <div className="w-16 h-16 bg-green-500/30 rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-all border-2 border-green-400"
+         onClick={() => setActiveBook(4)}>
+      <span className="text-xs text-green-300 font-bold">16-20</span>
+    </div>
+  </div>
+</div>
+```
+
+**RESULT:** Proper directional flow with Green Earth at bottom (West), correct chapter groupings, better visual icons, and improved spatial relationships that actually make sense.

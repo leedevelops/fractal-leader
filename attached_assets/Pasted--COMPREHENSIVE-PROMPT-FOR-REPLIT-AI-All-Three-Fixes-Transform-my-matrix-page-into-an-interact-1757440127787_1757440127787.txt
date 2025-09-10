@@ -1,0 +1,89 @@
+**COMPREHENSIVE PROMPT FOR REPLIT AI - All Three Fixes:**
+
+Transform my matrix page into an interactive, gamified experience with integrated AI chat and fix navigation inconsistencies across components.
+
+**PART 1: MATRIX PAGE REDESIGN (Primary Focus)**
+
+Replace the static matrix layout with progressive revelation using this 27-chapter data structure:
+
+```javascript
+const chapterData = [
+  { ch: 1, book: 1, hebrew: "י", bookName: "Becoming Rooted", title: "Leadership Begins at the Altar", geometry: "Square", stone: "Sardius", element: "Fire", temple: "Altar", color: "Red", direction: null },
+  { ch: 5, book: 1, hebrew: "י", bookName: "Becoming Rooted", title: "The Seed Hidden in the Dust", geometry: "Monad Unity Point", direction: "North" },
+  { ch: 10, book: 2, hebrew: "ה", bookName: "Becoming Aligned", title: "The Invisible Root System", direction: "South" },
+  { ch: 15, book: 3, hebrew: "ו", bookName: "Becoming Clear", title: "Sacred Sight", direction: "East" },
+  { ch: 20, book: 4, hebrew: "ה", bookName: "Becoming Embodied", title: "The Body of Christ", direction: "West" },
+  { ch: 25, book: 5, hebrew: "ישוע", bookName: "Pattern Manifesto", title: "The Commissioning Pattern", direction: "Center" }
+  // ... include all 27 chapters with full data
+];
+```
+
+**Interactive Features:**
+1. **Central YHWH Hub** - Clickable quadrants that reveal book chapters progressively
+2. **Achievement System** - Track progress through 7 dimensions (Glory, Presence, Voice, Word, Image, Spirit, Name)
+3. **Directional Compass** - North/South/East/West/Center navigation based on hidden chapters
+4. **Chapter Unlock Mechanics** - Start with Chapter 1, unlock others through engagement
+5. **Visual Elements** - Geometry icons, element colors, temple space indicators
+
+**PART 2: CHAT INTEGRATION INTO MATRIX**
+
+Add AI coaching context for each matrix element:
+
+```tsx
+// Add chat prompt buttons to each chapter card
+<div className="chapter-card" onClick={() => setActiveChapter(chapter)}>
+  <div className="chapter-content">{/* existing content */}</div>
+  <Button 
+    variant="outline" 
+    size="sm"
+    onClick={(e) => {
+      e.stopPropagation();
+      openChapterChat(chapter);
+    }}
+  >
+    Ask AI Coach
+  </Button>
+</div>
+
+// Chat modal or sidebar with chapter context
+const openChapterChat = (chapter) => {
+  setChatContext({
+    chapterTitle: chapter.title,
+    bookTheme: chapter.bookName,
+    element: chapter.element,
+    templeSpace: chapter.temple,
+    spiritualFocus: chapter.dimension
+  });
+  setShowChat(true);
+};
+```
+
+**PART 3: NAVIGATION FIXES**
+
+Fix inconsistent routing patterns in both matrix and chat components:
+
+```tsx
+// REPLACE ALL INSTANCES OF:
+window.location.href = "/api/login"
+onClick={() => window.location.href = '/path'}
+
+// WITH CONSISTENT WOUTER NAVIGATION:
+import { useLocation } from "wouter";
+const [, setLocation] = useLocation();
+onClick={() => setLocation('/assessment')}
+
+// For authentication, handle differently:
+const handleAuth = () => {
+  // Call your auth API or redirect appropriately
+  // Don't use window.location.href for client-side routes
+};
+```
+
+**SPECIFIC FIXES:**
+- Matrix page: Fix `/api/login` redirects to use proper auth flow
+- Chat component: Replace `window.location.href` with `setLocation()`
+- All navigation buttons: Use Wouter's `setLocation()` consistently
+- Add missing routes in App.tsx Router for `/matrix` if needed
+
+**RESULT:** 
+An immersive matrix navigation experience with contextual AI coaching, achievement tracking, and consistent routing throughout the application. Users progressively unlock the 27-chapter framework while getting personalized biblical leadership guidance.

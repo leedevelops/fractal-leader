@@ -1,0 +1,141 @@
+// In your Landing component:
+function Landing() {
+  const [, navigate] = useLocation();
+  
+  // Imgur URLs for your images
+  const logoUrl = "https://i.imgur.com/YOUR_LOGO_ID.png";
+  const heroUrl = "https://i.imgur.com/YOUR_HERO_ID.jpg";
+  const matrixMapUrl = "https://i.imgur.com/YOUR_MATRIX_ID.jpg";
+  
+  return (
+    <div className="min-h-screen bg-cosmic-deep">
+      {/* Header with logo */}
+      <header className="flex items-center justify-between p-6 border-b border-cosmic-golden/20">
+        <img 
+          src={logoUrl} 
+          alt="Fractal Leader" 
+          className="h-12 w-auto filter drop-shadow-lg animate-pulse-slow" 
+        />
+        <nav className="hidden md:flex space-x-8">
+          <button 
+            onClick={() => navigate('/assessment')}
+            className="text-cosmic-silver hover:text-cosmic-golden transition-colors"
+          >
+            Assessment
+          </button>
+          <button 
+            onClick={() => navigate('/subscribe')}
+            className="text-cosmic-silver hover:text-cosmic-golden transition-colors"
+          >
+            Pricing
+          </button>
+        </nav>
+      </header>
+
+      {/* Hero with cosmic background */}
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+        {/* Background image with cosmic overlay */}
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{
+            backgroundImage: `linear-gradient(135deg, 
+              hsl(240, 15%, 8%, 0.9) 0%, 
+              hsl(270, 60%, 50%, 0.1) 50%, 
+              hsl(245, 20%, 5%, 0.9) 100%), 
+              url(${heroUrl})`
+          }}
+        />
+        
+        {/* Hebrew matrix background */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {/* Your existing matrix animation */}
+        </div>
+        
+        {/* Fractal pattern overlay */}
+        <div className="absolute inset-0 fractal-pattern" />
+        
+        {/* Hero content */}
+        <div className="relative z-10 text-center max-w-6xl mx-auto px-6">
+          <h1 className="text-6xl md:text-8xl font-bold mb-6 text-cosmic-golden animate-hebrew-glow">
+            Lead with pattern.
+          </h1>
+          <p className="text-2xl mb-8 text-cosmic-silver font-mystical">
+            Align identity, vision, action.
+          </p>
+          
+          {/* Action chips with cosmic styling */}
+          <div className="flex flex-wrap gap-4 justify-center mb-12">
+            {[
+              { name: 'Assess', icon: 'https://i.imgur.com/ASSESS_ID.svg', hebrew: 'א' },
+              { name: 'Align', icon: 'https://i.imgur.com/ALIGN_ID.svg', hebrew: 'ה' },
+              { name: 'Act', icon: 'https://i.imgur.com/ACT_ID.svg', hebrew: 'ו' }
+            ].map(({ name, icon, hebrew }) => (
+              <div 
+                key={name}
+                className="group flex items-center gap-3 px-8 py-4 bg-card/80 backdrop-blur-md rounded-2xl border border-cosmic-golden/30 cursor-pointer hover:bg-cosmic-ethereal/20 transition-all duration-300 animate-fractal-grow"
+              >
+                <span className="hebrew-letter text-2xl">{hebrew}</span>
+                <img src={icon} alt={name} className="w-6 h-6 filter drop-shadow-md" />
+                <span className="text-cosmic-silver group-hover:text-cosmic-golden transition-colors font-medium">
+                  {name}
+                </span>
+              </div>
+            ))}
+          </div>
+          
+          {/* CTAs */}
+          <div className="flex flex-wrap gap-6 justify-center">
+            <button 
+              onClick={() => navigate('/assessment')}
+              className="px-10 py-4 bg-gradient-to-r from-cosmic-golden to-cosmic-silver text-cosmic-deep rounded-2xl font-semibold hover:shadow-2xl hover:shadow-cosmic-golden/25 transition-all duration-300 animate-pulse-slow"
+            >
+              Request Access
+            </button>
+            <button 
+              onClick={() => document.getElementById('matrix-section')?.scrollIntoView({ behavior: 'smooth' })}
+              className="px-10 py-4 border-2 border-cosmic-golden/50 text-cosmic-golden rounded-2xl font-semibold hover:bg-cosmic-golden/10 hover:border-cosmic-golden transition-all duration-300"
+            >
+              Explore Matrix
+            </button>
+          </div>
+        </div>
+      </section>
+
+      {/* Matrix Map Section */}
+      <section id="matrix-section" className="py-20 px-6 bg-cosmic-void relative">
+        <div className="max-w-6xl mx-auto text-center">
+          <h2 className="text-4xl font-bold mb-8 text-cosmic-golden font-hebrew">
+            The Fractal Leadership Matrix
+          </h2>
+          <div className="relative inline-block">
+            <img 
+              src={matrixMapUrl} 
+              alt="Leadership Matrix Map" 
+              className="max-w-full h-auto rounded-3xl border-2 border-cosmic-golden/30 shadow-2xl shadow-cosmic-ethereal/20" 
+            />
+            {/* Interactive overlay for matrix quadrants */}
+            <div className="absolute inset-0 grid grid-cols-2 grid-rows-2 gap-2 p-4">
+              {[
+                { name: 'Identity', hebrew: 'י', position: 'top-left' },
+                { name: 'Vision', hebrew: 'ה', position: 'top-right' },
+                { name: 'Alignment', hebrew: 'ו', position: 'bottom-left' },
+                { name: 'Action', hebrew: 'ה', position: 'bottom-right' }
+              ].map(({ name, hebrew, position }) => (
+                <div 
+                  key={name}
+                  className="flex flex-col items-center justify-center cursor-pointer group hover:bg-cosmic-ethereal/20 rounded-2xl transition-all duration-300"
+                  onClick={() => navigate('/assessment')}
+                >
+                  <span className="hebrew-letter text-4xl mb-2">{hebrew}</span>
+                  <h3 className="text-cosmic-silver group-hover:text-cosmic-golden font-semibold">
+                    {name}
+                  </h3>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}

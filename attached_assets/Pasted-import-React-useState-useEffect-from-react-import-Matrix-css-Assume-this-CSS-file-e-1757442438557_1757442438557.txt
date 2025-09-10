@@ -1,0 +1,426 @@
+import React, { useState, useEffect } from 'react';
+import './Matrix.css'; // Assume this CSS file exists with styles from previous version, extended as needed
+
+// Define the Chapter interface
+interface Chapter {
+  ch: number;
+  book: string;
+  divineName: string;
+  bookName: string;
+  bookTheme: string;
+  chapterTitle: string;
+  geometryIcon: string;
+  stone: string;
+  element: string;
+  templeSpace: string;
+  storyStage: string;
+  dimension: string;
+  fractalGate: string;
+  spiritualFrequency: string;
+  bookColor: string;
+  tribe: string;
+  prophet: string;
+  prophet2: string;
+  apostle: string;
+  directionalMapping: string;
+}
+
+// Complete chapter data from the matrix (all 26 chapters; ch27 not provided, so up to 26)
+const chapterData: Chapter[] = [
+  { ch: 1, book: 'Book 1', divineName: 'Yod', bookName: 'Becoming Rooted', bookTheme: 'Identity, Calling, and the Formation of Glory', chapterTitle: 'Leadership Begins at the Altar', geometryIcon: 'Square', stone: 'Sardius', element: 'Fire', templeSpace: 'Altar', storyStage: 'Exposition', dimension: '1 Glory', fractalGate: 'Revelation', spiritualFrequency: 'Deep Stillness', bookColor: 'Red', tribe: 'Reuben', prophet: 'Hosea', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 2, book: 'Book 1', divineName: 'Yod', bookName: 'Becoming Rooted', bookTheme: 'Identity, Calling, and the Formation of Glory', chapterTitle: 'The Tripartite Leader: Spirit, Soul, and Body', geometryIcon: 'Equilateral Triangle', stone: 'Topaz', element: 'Fire', templeSpace: 'Altar', storyStage: 'Rising Action', dimension: '6 Image', fractalGate: 'Internalization', spiritualFrequency: 'Triune Tone', bookColor: 'Red', tribe: 'Simeon', prophet: 'Joel', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 3, book: 'Book 1', divineName: 'Yod', bookName: 'Becoming Rooted', bookTheme: 'Identity, Calling, and the Formation of Glory', chapterTitle: 'Why We Had to Leave Eden', geometryIcon: '2D Spiral', stone: 'Emerald', element: 'Fire', templeSpace: 'Altar', storyStage: 'Climax', dimension: '2 Presence', fractalGate: 'Embodiment', spiritualFrequency: 'Exilic Echo', bookColor: 'Red', tribe: 'Levi', prophet: 'Amos', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 4, book: 'Book 1', divineName: 'Yod', bookName: 'Becoming Rooted', bookTheme: 'Identity, Calling, and the Formation of Glory', chapterTitle: 'Formation in Exile: The Purpose of the Fall', geometryIcon: 'Isometric Cube', stone: 'Carbuncle', element: 'Fire', templeSpace: 'Altar', storyStage: 'Falling Action', dimension: '4 Word', fractalGate: 'Integration', spiritualFrequency: 'Structure Hum', bookColor: 'Red', tribe: 'Judah', prophet: 'Obadiah', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 5, book: 'Book 1', divineName: 'Yod', bookName: 'Becoming Rooted', bookTheme: 'Identity, Calling, and the Formation of Glory', chapterTitle: 'The Seed Hidden in the Dust', geometryIcon: 'Monad Unity Point', stone: 'Onyx', element: 'Fire', templeSpace: 'Altar', storyStage: 'Resolution', dimension: '7 Name', fractalGate: 'Hidden (North)', spiritualFrequency: 'Subterranean Hum', bookColor: 'Red', tribe: 'Dan', prophet: 'Jonah', prophet2: '', apostle: '', directionalMapping: 'North' },
+  { ch: 6, book: 'Book 2', divineName: 'Heh', bookName: 'Becoming Aligned', bookTheme: 'Patterns and the Spiritual Core of Leadership', chapterTitle: 'Jesus as the Tree of Life, the Flaming Sword, and the Cosmic Unifier', geometryIcon: 'Tetrahedron + Rays', stone: 'Sapphire', element: 'Air', templeSpace: 'Holy Place', storyStage: 'Exposition', dimension: '6 Image', fractalGate: 'Revelation', spiritualFrequency: 'Tree Flame Pulse', bookColor: 'Blue', tribe: 'Naphtali', prophet: 'Micah', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 7, book: 'Book 2', divineName: 'Heh', bookName: 'Becoming Aligned', bookTheme: 'Patterns and the Spiritual Core of Leadership', chapterTitle: 'The Divine Pattern: YHWH‚ Structure and the Wings of Wisdom', geometryIcon: 'Hexagonal Mandala', stone: 'Diamond', element: 'Air', templeSpace: 'Holy Place', storyStage: 'Rising Action', dimension: '4 Word', fractalGate: 'Internalization', spiritualFrequency: 'Wings of Wisdom Vibration', bookColor: 'Blue', tribe: 'Gad', prophet: 'Nahum', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 8, book: 'Book 2', divineName: 'Heh', bookName: 'Becoming Aligned', bookTheme: 'Patterns and the Spiritual Core of Leadership', chapterTitle: 'The Pattern Keeper: Heaven‚ Interface and Leadership Design', geometryIcon: 'Octahedron', stone: 'Ligure', element: 'Air', templeSpace: 'Holy Place', storyStage: 'Climax', dimension: '2 Presence', fractalGate: 'Embodiment', spiritualFrequency: 'Guardian Harmonic', bookColor: 'Blue', tribe: 'Asher', prophet: 'Habakkuk', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 9, book: 'Book 2', divineName: 'Heh', bookName: 'Becoming Aligned', bookTheme: 'Patterns and the Spiritual Core of Leadership', chapterTitle: 'The Fractal Pattern of Leadership', geometryIcon: 'Fibonacci Spiral', stone: 'Agate', element: 'Air', templeSpace: 'Holy Place', storyStage: 'Falling Action', dimension: '5 Spirit', fractalGate: 'Integration', spiritualFrequency: 'Recursive Tone', bookColor: 'Blue', tribe: 'Issachar', prophet: 'Zephaniah', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 10, book: 'Book 2', divineName: 'Heh', bookName: 'Becoming Aligned', bookTheme: 'Patterns and the Spiritual Core of Leadership', chapterTitle: 'The Invisible Root System of Authority', geometryIcon: 'Fractal Tree', stone: 'Amethyst', element: 'Air', templeSpace: 'Holy Place', storyStage: 'Resolution', dimension: '7 Name', fractalGate: 'Hidden (South)', spiritualFrequency: 'Root Resonance', bookColor: 'Blue', tribe: 'Zebulun', prophet: 'Haggai', prophet2: '', apostle: '', directionalMapping: 'South' },
+  { ch: 11, book: 'Book 3', divineName: 'Vav', bookName: 'Becoming Clear', bookTheme: 'Vision, Emotional Intelligence, and the Inner Compass', chapterTitle: 'Vision of God: The First Call of Every Leader', geometryIcon: 'Icosahedron', stone: 'Beryl', element: 'Water', templeSpace: 'Inner Light', storyStage: 'Exposition', dimension: '1 Glory', fractalGate: 'Revelation', spiritualFrequency: 'Visionary Call', bookColor: 'Teal', tribe: 'Joseph (Ephraim)', prophet: 'Zechariah', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 12, book: 'Book 3', divineName: 'Vav', bookName: 'Becoming Clear', bookTheme: 'Vision, Emotional Intelligence, and the Inner Compass', chapterTitle: 'Vision of Self: Emotional Tools and Soul Awareness', geometryIcon: 'Hexagonal Prism', stone: 'Onyx (2)', element: 'Water', templeSpace: 'Inner Light', storyStage: 'Rising Action', dimension: '3 Voice', fractalGate: 'Internalization', spiritualFrequency: 'Soul Frequency', bookColor: 'Teal', tribe: 'Benjamin', prophet: 'Malachi', prophet2: '', apostle: '', directionalMapping: '' },
+  { ch: 13, book: 'Book 3', divineName: 'Vav', bookName: 'Becoming Clear', bookTheme: 'Vision, Emotional Intelligence, and the Inner Compass', chapterTitle: 'Vision of Mission: Discovering Your Divine Measure', geometryIcon: 'Golden Ratio Spiral', stone: 'Jasper', element: 'Water', templeSpace: 'Inner Light', storyStage: 'Climax', dimension: '4 Word', fractalGate: 'Embodiment', spiritualFrequency: 'Mission Tuning', bookColor: 'Teal', tribe: '', prophet: 'John the Baptist', prophet2: '', apostle: 'Peter', directionalMapping: '' },
+  { ch: 14, book: 'Book 3', divineName: 'Vav', bookName: 'Becoming Clear', bookTheme: 'Vision, Emotional Intelligence, and the Inner Compass', chapterTitle: 'The Wounded Visionary: Leading Through Inner Conflict', geometryIcon: 'Mobius Strip', stone: 'Sapphire', element: 'Water', templeSpace: 'Inner Light', storyStage: 'Falling Action', dimension: '6 Image', fractalGate: 'Integration', spiritualFrequency: 'Wounded Harmony', bookColor: 'Teal', tribe: '', prophet: 'Elijah', prophet2: '', apostle: 'James (Zebedee)', directionalMapping: '' },
+  { ch: 15, book: 'Book 3', divineName: 'Vav', bookName: 'Becoming Clear', bookTheme: 'Vision, Emotional Intelligence, and the Inner Compass', chapterTitle: 'Sacred Sight: From Revelation to Discernment', geometryIcon: 'Metatron Cube', stone: 'Chalcedony', element: 'Water', templeSpace: 'Inner Light', storyStage: 'Resolution', dimension: '7 Name', fractalGate: 'Hidden (East)', spiritualFrequency: 'Sight Pulse', bookColor: 'Teal', tribe: '', prophet: 'John the Revelator', prophet2: '', apostle: 'John', directionalMapping: 'East' },
+  { ch: 16, book: 'Book 4', divineName: 'Final Heh', bookName: 'Becoming Embodied', bookTheme: 'Walking in Wisdom, Spirit, and Glory', chapterTitle: 'Emotional Intelligence and Passion', geometryIcon: '3D Pentagon', stone: 'Emerald (2)', element: 'Earth', templeSpace: 'Holy of Holies', storyStage: 'Exposition', dimension: '5 Spirit', fractalGate: 'Revelation', spiritualFrequency: 'Passion Current', bookColor: 'Green', tribe: '', prophet: 'Samuel', prophet2: '', apostle: 'Andrew', directionalMapping: '' },
+  { ch: 17, book: 'Book 4', divineName: 'Final Heh', bookName: 'Becoming Embodied', bookTheme: 'Walking in Wisdom, Spirit, and Glory', chapterTitle: 'Intelligent Action: Decision-Making in Alignment with the Spirit', geometryIcon: 'Tetrahedron', stone: 'Sardonyx', element: 'Earth', templeSpace: 'Holy of Holies', storyStage: 'Rising Action', dimension: '4 Word', fractalGate: 'Internalization', spiritualFrequency: 'Aligned Decision Pulse', bookColor: 'Green', tribe: '', prophet: 'Nathan', prophet2: '', apostle: 'Philip', directionalMapping: '' },
+  { ch: 18, book: 'Book 4', divineName: 'Final Heh', bookName: 'Becoming Embodied', bookTheme: 'Walking in Wisdom, Spirit, and Glory', chapterTitle: 'Embodied Leadership: Why Your Body Matters', geometryIcon: 'Isometric Grid', stone: 'Carnelian', element: 'Earth', templeSpace: 'Holy of Holies', storyStage: 'Climax', dimension: '6 Image', fractalGate: 'Embodiment', spiritualFrequency: 'Embodied Presence', bookColor: 'Green', tribe: '', prophet: 'Gad', prophet2: '', apostle: 'Bartholomew', directionalMapping: '' },
+  { ch: 19, book: 'Book 4', divineName: 'Final Heh', bookName: 'Becoming Embodied', bookTheme: 'Walking in Wisdom, Spirit, and Glory', chapterTitle: 'Mentors and Mirrors: Leading Like Jesus in a Fractured World', geometryIcon: 'Reflection Diagram', stone: 'Chrysolite', element: 'Earth', templeSpace: 'Holy of Holies', storyStage: 'Falling Action', dimension: '2 Presence', fractalGate: 'Integration', spiritualFrequency: 'Mirror Tone', bookColor: 'Green', tribe: '', prophet: 'David', prophet2: '', apostle: 'Matthew', directionalMapping: '' },
+  { ch: 20, book: 'Book 4', divineName: 'Final Heh', bookName: 'Becoming Embodied', bookTheme: 'Walking in Wisdom, Spirit, and Glory', chapterTitle: 'The Body of Christ: Flesh Made Flame', geometryIcon: 'Flower of Life', stone: 'Beryl (2)', element: 'Earth', templeSpace: 'Holy of Holies', storyStage: 'Resolution', dimension: '7 Name', fractalGate: 'Hidden (West)', spiritualFrequency: 'Radiant Bloom', bookColor: 'Green', tribe: '', prophet: 'Isaiah', prophet2: '', apostle: 'Thomas', directionalMapping: 'West' },
+  { ch: 21, book: 'Book 5', divineName: 'YESHUA', bookName: 'The Pattern Manafesto', bookTheme: 'Jesus, the Fractal Fulfillment, and the Apostolic Flame', chapterTitle: 'Yeshua: The Embodiment of YHWH', geometryIcon: 'Star of David', stone: 'Topaz (2)', element: 'Plasma', templeSpace: 'Ark', storyStage: 'Exposition', dimension: '7 Name', fractalGate: 'Revelation', spiritualFrequency: 'Incarnational Wave', bookColor: 'Gold/White', tribe: '', prophet: 'Jeremiah', prophet2: '', apostle: 'James (Alphaeus)', directionalMapping: '' },
+  { ch: 22, book: 'Book 5', divineName: 'YESHUA', bookName: 'The Pattern Manafesto', bookTheme: 'Jesus, the Fractal Fulfillment, and the Apostolic Flame', chapterTitle: 'The Spiral and the Sword: Jesus as Pattern and Portal', geometryIcon: 'Fibonacci Circle', stone: 'Chrysoprase', element: 'Plasma', templeSpace: 'Ark', storyStage: 'Rising Action', dimension: '6 Image', fractalGate: 'Internalization', spiritualFrequency: 'Sword Spiral Resonance', bookColor: 'Gold/White', tribe: '', prophet: 'Ezekiel', prophet2: '', apostle: 'Thaddeus', directionalMapping: '' },
+  { ch: 23, book: 'Book 5', divineName: 'YESHUA', bookName: 'The Pattern Manafesto', bookTheme: 'Jesus, the Fractal Fulfillment, and the Apostolic Flame', chapterTitle: 'The Name and the Nations: Fractal Mission in the Latter Days', geometryIcon: 'Torus (3D)', stone: 'Jacinth', element: 'Plasma', templeSpace: 'Ark', storyStage: 'Climax', dimension: '4 Word', fractalGate: 'Embodiment', spiritualFrequency: 'Global Pulse', bookColor: 'Gold/White', tribe: '', prophet: 'Daniel', prophet2: '', apostle: 'Simon the Zealot', directionalMapping: '' },
+  { ch: 24, book: 'Book 5', divineName: 'YESHUA', bookName: 'The Pattern Manafesto', bookTheme: 'Jesus, the Fractal Fulfillment, and the Apostolic Flame', chapterTitle: 'Pentecost, Fire, and the Echo of Eden', geometryIcon: '64 Star Tetrahedron', stone: 'Amethyst (2)', element: 'Plasma', templeSpace: 'Ark', storyStage: 'Falling Action', dimension: '7 Name', fractalGate: 'Integration', spiritualFrequency: 'Covenant Flame Ring', bookColor: 'Gold/White', tribe: '', prophet: 'Moses', prophet2: '', apostle: 'Matthias', directionalMapping: '' },
+  { ch: 25, book: 'Book 5', divineName: 'YESHUA', bookName: 'The Pattern Manafesto', bookTheme: 'Jesus, the Fractal Fulfillment, and the Apostolic Flame', chapterTitle: 'The Commissioning Pattern: Jesus and the Sending of the Flame', geometryIcon: 'Nested Fib Circles', stone: 'White Sapphire', element: 'Plasma', templeSpace: 'Ark', storyStage: 'Resolution', dimension: '7 Name', fractalGate: 'Hidden (Center)', spiritualFrequency: 'Shofar commission Resonance', bookColor: 'Gold/White', tribe: '', prophet: 'Jesus Christ', prophet2: '', apostle: 'Jesus Christ', directionalMapping: 'Center' },
+  { ch: 26, book: 'Book 5', divineName: 'YESHUA', bookName: 'The Pattern Manafesto', bookTheme: 'Jesus, the Fractal Fulfillment, and the Apostolic Flame', chapterTitle: 'The Apostolic Flame: Paul and the Global Replication Pattern', geometryIcon: 'Fractal Network', stone: 'Amethyst (3)', element: 'Plasma', templeSpace: 'Ark', storyStage: 'Rising Action', dimension: '7 Name', fractalGate: 'Revelation', spiritualFrequency: 'Global Pulse', bookColor: 'Gold/White', tribe: '', prophet: 'Paul', prophet2: '', apostle: 'Paul', directionalMapping: 'Global' },
+  // If ch27 exists, add it here with blanks as needed
+];
+
+// 1. FRACTAL DISCOVERY LAYERS
+const fractalLayers = {
+  chapter: { unlocked: true, mystery: "The Sacred Number" },
+  book: { unlocked: false, mystery: "The Divine Name Sequence" },
+  element: { unlocked: false, mystery: "The Temple Progression" },
+  stone: { unlocked: false, mystery: "The Breastplate Pattern" },
+  tribe: { unlocked: false, mystery: "The Encampment Formation" },
+  prophet: { unlocked: false, mystery: "The Prophetic Resonance" },
+  apostle: { unlocked: false, mystery: "The Apostolic Network" },
+  frequency: { unlocked: false, mystery: "The Spiritual Harmonics" }
+};
+
+// 2. HIDDEN PATTERN DISCOVERY
+const hiddenPatterns = {
+  yhwh: {
+    clue: "Four letters, four directions, one name",
+    pattern: ["י", "ה", "ו", "ה"],
+    reward: "Unlocks Book Theme layer"
+  },
+  elements: {
+    clue: "The sacred progression from dense to light",
+    pattern: ["Fire", "Air", "Water", "Earth", "Plasma"],
+    reward: "Unlocks Temple Space layer"
+  },
+  stones: {
+    clue: "Twelve foundations, four rows, one breastplate",
+    pattern: "breastplate_formation",
+    reward: "Unlocks Tribe layer"
+  },
+  frequencies: {
+    clue: "Seven notes, infinite harmony",
+    pattern: ["Deep Stillness", "Triune Tone", "Exilic Echo", "Structure Hum", "Subterranean Hum"],
+    reward: "Unlocks Spiritual Frequency layer"
+  }
+};
+
+// 3. INTERACTIVE LEARNING MECHANICS
+const getMysteryTitle = (chapter: Chapter, revealed: boolean) => {
+  if (!revealed) {
+    return `Chapter ${chapter.ch}: The ${chapter.element} Mystery`;
+  }
+  return chapter.chapterTitle;
+};
+
+const revealChapterSecrets = (chapter: Chapter) => {
+  const secrets = {
+    basicInfo: { element: chapter.element, temple: chapter.templeSpace },
+    deeperMystery: { stone: chapter.stone, frequency: chapter.spiritualFrequency },
+    hiddenWisdom: { tribe: chapter.tribe, prophet: chapter.prophet },
+    apostolicConnection: { apostle: chapter.apostle, dimension: chapter.dimension }
+  };
+  
+  return secrets;
+};
+
+// 4. PROPHETIC & APOSTOLIC CONNECTIONS
+const PropheticNetwork: React.FC<{ activeChapter: Chapter }> = ({ activeChapter }) => {
+  const connections = { // Simple connections object
+    prophet: activeChapter.prophet || '???',
+    apostle: activeChapter.apostle || '???',
+    frequency: activeChapter.spiritualFrequency || '???'
+  };
+  
+  return (
+    <div className="mystery-web">
+      <div className="prophet-node">
+        <span>Prophet: {connections.prophet}</span>
+      </div>
+      <div className="connection-line" />
+      <div className="apostle-node">
+        <span>Apostle: {connections.apostle}</span>
+      </div>
+      <div className="frequency-resonance">
+        <span>Frequency: {connections.frequency}</span>
+      </div>
+    </div>
+  );
+};
+
+// 5. STONE & TRIBE MYSTERIES
+const getTribePosition = (tribe: string) => {
+  const positions = {
+    'Reuben': 'row1-col1',
+    'Simeon': 'row1-col2',
+    'Levi': 'row1-col3',
+    'Judah': 'row2-col1',
+    'Dan': 'row2-col2',
+    'Naphtali': 'row2-col3',
+    'Gad': 'row3-col1',
+    'Asher': 'row3-col2',
+    'Issachar': 'row3-col3',
+    'Zebulun': 'row4-col1',
+    'Joseph (Ephraim)': 'row4-col2',
+    'Benjamin': 'row4-col3',
+    '': '' // For no tribe
+  };
+  return positions[tribe] || '';
+};
+
+const BreastplateReveal: React.FC = () => {
+  const breastplateStones = chapterData.slice(0, 12).map(ch => ({
+    stone: ch.stone,
+    tribe: ch.tribe,
+    position: getTribePosition(ch.tribe)
+  }));
+  
+  return (
+    <div className="breastplate-grid grid grid-cols-3 grid-rows-4 gap-2">
+      {breastplateStones.map((item, index) => (
+        <div key={index} className={`stone-position ${item.position}`}>
+          <div className="stone-name">{item.stone}</div>
+          <div className="tribe-name">{item.tribe}</div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+// 6. FREQUENCY HARMONICS
+const frequencyPatterns = {
+  "Deep Stillness": { color: "#8B0000", wave: "low" },
+  "Triune Tone": { color: "#FF4500", wave: "triple" },
+  "Exilic Echo": { color: "#32CD32", wave: "echo" },
+  "Structure Hum": { color: "#FFD700", wave: "structure" },
+  "Subterranean Hum": { color: "#4B0082", wave: "subterranean" },
+  "Tree Flame Pulse": { color: "#FF8C00", wave: "pulse" },
+  "Wings of Wisdom Vibration": { color: "#00BFFF", wave: "vibration" },
+  "Guardian Harmonic": { color: "#8A2BE2", wave: "harmonic" },
+  "Recursive Tone": { color: "#228B22", wave: "recursive" },
+  "Root Resonance": { color: "#A52A2A", wave: "resonance" },
+  "Visionary Call": { color: "#20B2AA", wave: "call" },
+  "Soul Frequency": { color: "#9370DB", wave: "soul" },
+  "Mission Tuning": { color: "#FF6347", wave: "tuning" },
+  "Wounded Harmony": { color: "#808080", wave: "wounded" },
+  "Sight Pulse": { color: "#00FF7F", wave: "sight" },
+  "Passion Current": { color: "#DC143C", wave: "passion" },
+  "Aligned Decision Pulse": { color: "#4169E1", wave: "aligned" },
+  "Embodied Presence": { color: "#228B22", wave: "embodied" },
+  "Mirror Tone": { color: "#C0C0C0", wave: "mirror" },
+  "Radiant Bloom": { color: "#FFFF00", wave: "bloom" },
+  "Incarnational Wave": { color: "#FFD700", wave: "incarnational" },
+  "Sword Spiral Resonance": { color: "#B22222", wave: "spiral" },
+  "Global Pulse": { color: "#1E90FF", wave: "global" },
+  "Covenant Flame Ring": { color: "#FF4500", wave: "covenant" },
+  "Shofar commission Resonance": { color: "#DAA520", wave: "shofar" }
+  // Add any missing with default if needed
+};
+
+const FrequencyVisualizer: React.FC<{ frequency: string }> = ({ frequency }) => {
+  const pattern = frequencyPatterns[frequency] || { color: "#000", wave: "default" };
+  let wavePath = 'M0 50 L100 50'; // Default flat
+  if (pattern.wave === "low") wavePath = 'M0 50 Q50 100 100 50 T200 50';
+  if (pattern.wave === "triple") wavePath = 'M0 50 Q25 0 50 50 Q75 100 100 50 Q125 0 150 50';
+  if (pattern.wave === "echo") wavePath = 'M0 50 Q50 0 100 50 T150 50 T200 50';
+  // Add more wave patterns as needed
+
+  return (
+    <div className="frequency-display">
+      <svg width="200" height="100" style={{ stroke: pattern.color, fill: 'none' }}>
+        <path d={wavePath} strokeWidth="2" />
+      </svg>
+      <div className="frequency-name" style={{ color: pattern.color }}>{frequency}</div>
+    </div>
+  );
+};
+
+// 7. LEARNING CHALLENGES
+const learningChallenges = {
+  yhwhSequence: {
+    question: "What is the correct order of the divine name?",
+    options: ["יהוה", "והיה", "ההוי", "הויה"],
+    correct: 0,
+    reward: "Unlock next book"
+  },
+  elementProgression: {
+    question: "Which element comes after Air in the temple progression?",
+    options: ["Earth", "Water", "Fire", "Plasma"],
+    correct: 1,
+    reward: "Reveal stone meanings"
+  },
+  apostolicPairs: {
+    question: "Which apostle is connected to the Wounded Visionary chapter?",
+    clue: "Look for the one who doubted but became a pillar",
+    answer: "Thomas",
+    reward: "Unlock prophetic resonance"
+  }
+  // Add more challenges as needed
+};
+
+// 8. MYSTERY REVELATION FLOW
+const mysteryStages = {
+  stage1: { name: "Surface Pattern", reveals: ["chapter", "element", "templeSpace"] },
+  stage2: { name: "Sacred Geometry", reveals: ["stone", "geometryIcon", "dimension"] },
+  stage3: { name: "Tribal Connections", reveals: ["tribe", "prophet", "spiritualFrequency"] },
+  stage4: { name: "Apostolic Network", reveals: ["apostle", "storyStage", "fractalGate"] },
+  stage5: { name: "Divine Harmony", reveals: ["all_connections", "hidden_patterns"] }
+};
+
+const Matrix: React.FC = () => {
+  // States from previous + new
+  const [completedChapters, setCompletedChapters] = useState<string[]>([]);
+  const [selectedChapter, setSelectedChapter] = useState<Chapter | null>(null);
+  const [revealedLayers, setRevealedLayers] = useState<string[]>(['chapter']);
+  const [mysteryProgress, setMysteryProgress] = useState<{ [key: string]: number }>({});
+  const [currentChallenge, setCurrentChallenge] = useState<string | null>(null);
+  const [challengeAnswer, setChallengeAnswer] = useState<string>('');
+  const [currentStage, setCurrentStage] = useState(1);
+
+  // Load progress
+  useEffect(() => {
+    const savedCompleted = localStorage.getItem('completedChapters');
+    const savedLayers = localStorage.getItem('revealedLayers');
+    if (savedCompleted) setCompletedChapters(JSON.parse(savedCompleted));
+    if (savedLayers) setRevealedLayers(JSON.parse(savedLayers));
+  }, []);
+
+  // Save progress
+  useEffect(() => {
+    localStorage.setItem('completedChapters', JSON.stringify(completedChapters));
+    localStorage.setItem('revealedLayers', JSON.stringify(revealedLayers));
+  }, [completedChapters, revealedLayers]);
+
+  // Handle chapter selection
+  const handleRowClick = (chapter: Chapter) => {
+    setSelectedChapter(chapter);
+  };
+
+  // Complete chapter
+  const completeChapter = (ch: number) => {
+    const chStr = ch.toString();
+    if (!completedChapters.includes(chStr)) {
+      setCompletedChapters([...completedChapters, chStr]);
+      // Potentially unlock layers based on completion
+      if (completedChapters.length % 5 === 0) { // Example progression
+        unlockNextLayer();
+      }
+      setSelectedChapter(null);
+    }
+  };
+
+  // Unlock next layer (example logic)
+  const unlockNextLayer = () => {
+    const nextLayer = Object.keys(fractalLayers).find(layer => !revealedLayers.includes(layer));
+    if (nextLayer) {
+      setRevealedLayers([...revealedLayers, nextLayer]);
+    }
+  };
+
+  // Handle challenge submission
+  const submitChallenge = (challengeKey: string) => {
+    const challenge = learningChallenges[challengeKey as keyof typeof learningChallenges];
+    if (challenge.options && parseInt(challengeAnswer) === challenge.correct) {
+      // Correct option
+      alert(`Correct! Reward: ${challenge.reward}`);
+      unlockNextLayer(); // Or specific unlock
+    } else if (challenge.answer && challengeAnswer.toLowerCase() === challenge.answer.toLowerCase()) {
+      // Correct text answer
+      alert(`Correct! Reward: ${challenge.reward}`);
+      unlockNextLayer();
+    } else {
+      alert('Try again!');
+    }
+    setCurrentChallenge(null);
+    setChallengeAnswer('');
+  };
+
+  // Advance stage if all reveals in current stage are unlocked
+  useEffect(() => {
+    const stageKey = `stage${currentStage}` as keyof typeof mysteryStages;
+    const required = mysteryStages[stageKey].reveals;
+    if (required.every(r => revealedLayers.includes(r))) {
+      setCurrentStage(prev => Math.min(prev + 1, 5));
+    }
+  }, [revealedLayers, currentStage]);
+
+  return (
+    <div className="matrix-container">
+      <h1 className="matrix-title">Fractal Leader Matrix Quest</h1>
+      <p>Current Stage: {mysteryStages[`stage${currentStage}` as keyof typeof mysteryStages].name}</p>
+      <table className="matrix-table">
+        <thead>
+          <tr>
+            <th>Ch#</th>
+            {revealedLayers.includes('book') && <th>Book Name</th>}
+            <th>Chapter Title</th>
+            {revealedLayers.includes('geometryIcon') && <th>Geometry</th>}
+            {revealedLayers.includes('stone') && <th>Stone</th>}
+            {revealedLayers.includes('element') && <th>Element</th>}
+            {revealedLayers.includes('frequency') && <th>Frequency</th>}
+          </tr>
+        </thead>
+        <tbody>
+          {chapterData.map((chapter) => (
+            <tr
+              key={chapter.ch}
+              className={completedChapters.includes(chapter.ch.toString()) ? 'completed' : ''}
+              onClick={() => handleRowClick(chapter)}
+            >
+              <td>{chapter.ch}</td>
+              {revealedLayers.includes('book') && <td>{chapter.bookName}</td>}
+              <td>{getMysteryTitle(chapter, revealedLayers.includes('chapter'))}</td>
+              {revealedLayers.includes('geometryIcon') && <td>{chapter.geometryIcon}</td>}
+              {revealedLayers.includes('stone') && <td>{chapter.stone}</td>}
+              {revealedLayers.includes('element') && <td>{chapter.element}</td>}
+              {revealedLayers.includes('frequency') && <td>{chapter.spiritualFrequency}</td>}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {selectedChapter && (
+        <div className="details">
+          <h3>{getMysteryTitle(selectedChapter, true)}</h3>
+          <p><strong>Secrets:</strong> {JSON.stringify(revealChapterSecrets(selectedChapter))}</p>
+          <button onClick={() => completeChapter(selectedChapter.ch)}>Complete Quest</button>
+          <PropheticNetwork activeChapter={selectedChapter} />
+          {revealedLayers.includes('frequency') && <FrequencyVisualizer frequency={selectedChapter.spiritualFrequency} />}
+        </div>
+      )}
+
+      {revealedLayers.includes('stone') && revealedLayers.includes('tribe') && (
+        <div className="breastplate-section">
+          <h2>Breastplate Reveal</h2>
+          <BreastplateReveal />
+        </div>
+      )}
+
+      <div className="challenges-section">
+        <h2>Learning Challenges</h2>
+        {Object.keys(learningChallenges).map(key => (
+          <button key={key} onClick={() => setCurrentChallenge(key)}>Take {key} Challenge</button>
+        ))}
+      </div>
+
+      {currentChallenge && (
+        <div className="challenge-modal">
+          <h3>{learningChallenges[currentChallenge as keyof typeof learningChallenges].question}</h3>
+          {learningChallenges[currentChallenge as keyof typeof learningChallenges].clue && (
+            <p>Clue: {learningChallenges[currentChallenge as keyof typeof learningChallenges].clue}</p>
+          )}
+          {learningChallenges[currentChallenge as keyof typeof learningChallenges].options ? (
+            <div>
+              {learningChallenges[currentChallenge as keyof typeof learningChallenges].options!.map((opt, idx) => (
+                <button key={idx} onClick={() => { setChallengeAnswer(idx.toString()); submitChallenge(currentChallenge); }}>{opt}</button>
+              ))}
+            </div>
+          ) : (
+            <div>
+              <input
+                type="text"
+                value={challengeAnswer}
+                onChange={(e) => setChallengeAnswer(e.target.value)}
+                placeholder="Enter answer"
+              />
+              <button onClick={() => submitChallenge(currentChallenge)}>Submit</button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <div className="progress">
+        Progress: {completedChapters.length}/{chapterData.length} chapters | Revealed Layers: {revealedLayers.join(', ')}
+      </div>
+    </div>
+  );
+};
+
+export default Matrix;
