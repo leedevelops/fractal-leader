@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -18,12 +18,12 @@ export default function BiblicalMatrixExplorer() {
     queryKey: ['/api/biblical-matrix'],
   });
 
-  const { data: currentBookData } = useQuery({
+  const { data: currentBookData } = useQuery<any[]>({
     queryKey: ['/api/biblical-matrix/book', selectedBook],
     enabled: !!selectedBook,
   });
 
-  const { data: currentChapterData } = useQuery({
+  const { data: currentChapterData } = useQuery<any>({
     queryKey: ['/api/biblical-matrix/chapter', selectedChapter],
     enabled: !!selectedChapter,
   });
@@ -83,21 +83,22 @@ export default function BiblicalMatrixExplorer() {
     }
   };
 
-  const renderGeometry = (geometryIcon: string, element: string) => {
-    const svgId = `geometry-${geometryIcon.replace(/\\s+/g, '-').toLowerCase()}`;
+  // Geometry rendering component
+  const GeometryRenderer = ({ geometryIcon, element }: { geometryIcon: string; element: string }) => {
+    const svgRef = useRef<SVGSVGElement>(null);
     
     useEffect(() => {
-      const svg = d3.select(`#${svgId}`);
-      if (!svg.empty()) {
-        svg.selectAll('*').remove();
-        renderBiblicalGeometry(svg as any, geometryIcon, element, 200, 200);
-      }
+      if (!svgRef.current) return;
+      
+      const svg = d3.select(svgRef.current);
+      svg.selectAll('*').remove();
+      renderBiblicalGeometry(svg as any, geometryIcon, element, 200, 200);
     }, [geometryIcon, element]);
 
     return (
       <div className="flex justify-center">
         <svg
-          id={svgId}
+          ref={svgRef}
           width={200}
           height={200}
           className="border border-border rounded-lg bg-card"
@@ -146,7 +147,7 @@ export default function BiblicalMatrixExplorer() {
 
                   {currentBookData && (
                     <div className="grid gap-4">
-                      {(currentBookData as any[]).map((chapter: any) => (
+                      {currentBookData?.map((chapter: any) => (
                         <Card 
                           key={chapter.id} 
                           className="bg-card/50 border-border cursor-pointer hover:bg-card/70 transition-colors"
@@ -237,21 +238,24 @@ export default function BiblicalMatrixExplorer() {
             <Card className="mt-6 bg-cosmic-purple/5 border-cosmic-purple/20">
               <CardHeader>
                 <CardTitle className="text-lg text-cosmic-golden">
-                  Chapter {(currentChapterData as any).chapterNumber} - Biblical Patterns
+                  Chapter {currentChapterData?.chapterNumber} - Biblical Patterns
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="grid md:grid-cols-2 gap-6">
                   <div>
-                    {renderGeometry((currentChapterData as any).geometryIcon, (currentChapterData as any).element)}
+                    <GeometryRenderer 
+                      geometryIcon={currentChapterData?.geometryIcon}
+                      element={currentChapterData?.element}
+                    />
                   </div>
                   <div className="space-y-4">
                     <div>
                       <h4 className="font-semibold text-cosmic-golden mb-2">
-                        {(currentChapterData as any).chapterTitle}
+                        {currentChapterData?.chapterTitle}
                       </h4>
                       <p className="text-sm text-muted-foreground mb-4">
-                        {(currentChapterData as any).bookTheme}
+                        {currentChapterData?.bookTheme}
                       </p>
                     </div>
                     
@@ -259,13 +263,13 @@ export default function BiblicalMatrixExplorer() {
                       <div className="flex justify-between">
                         <span className="text-sm text-muted-foreground">Divine Name:</span>
                         <Badge className="bg-cosmic-golden/20 text-cosmic-golden border-cosmic-golden/40">
-                          {(currentChapterData as any).divineName}
+                          {currentChapterData?.divineName}
                         </Badge>
                       </div>
                       
                       <div className="flex justify-between">
                         <span className="text-sm text-muted-foreground">Fractal Gate:</span>
-                        <span className="text-sm">{(currentChapterData as any).fractalGate}</span>
+                        <span className="text-sm">{currentChapterData?.fractalGate}</span>
                       </div>
                       
                       <div className="flex justify-between">
@@ -273,11 +277,11 @@ export default function BiblicalMatrixExplorer() {
                         <Button
                           size="sm"
                           variant="ghost"
-                          onClick={() => handlePlayFrequency((currentChapterData as any).spiritualFrequency)}
+                          onClick={() => handlePlayFrequency(currentChapterData?.spiritualFrequency)}
                           className="h-auto p-1 text-cosmic-golden hover:text-cosmic-golden"
                         >
-                          {(currentChapterData as any).spiritualFrequency} 
-                          ({getMatrixFrequency((currentChapterData as any).spiritualFrequency)} Hz)
+                          {currentChapterData?.spiritualFrequency} 
+                          ({getMatrixFrequency(currentChapterData?.spiritualFrequency)} Hz)
                         </Button>
                       </div>
                     </div>

@@ -7,6 +7,8 @@ import {
   dailyPractices,
   progressMetrics,
   sacredMatrix,
+  userProgress,
+  gateProgress,
   type User,
   type UpsertUser,
   type Organization,
@@ -21,9 +23,26 @@ import {
   type ProgressMetric,
   type SacredMatrixEntry,
   type InsertSacredMatrixEntry,
+  type UserProgress,
+  type UserProgressEntry,
+  type InsertUserProgress,
+  type GateProgress,
+  type InsertGateProgress,
+  type GameProgressResponse,
 } from "@shared/schema";
+import { 
+  chapterProgress, 
+  userGeneration, 
+  chapterAssessments, 
+  type ChapterProgress, 
+  type NewChapterProgress, 
+  type UserGeneration, 
+  type NewUserGeneration, 
+  type ChapterAssessment, 
+  type NewChapterAssessment 
+} from '@shared/schema';
 import { db } from "./db";
-import { eq, and, desc, gte, sql } from "drizzle-orm";
+import { eq, and, desc, gte, sql, asc } from "drizzle-orm";
 
 export interface IStorage {
   // User operations (mandatory for Replit Auth)
@@ -72,6 +91,30 @@ export interface IStorage {
   getBiblicalMatrixByBook(bookNumber: number): Promise<SacredMatrixEntry[]>;
   getBiblicalMatrixByChapter(chapterNumber: number): Promise<SacredMatrixEntry | undefined>;
   initializeBiblicalMatrix(): Promise<void>;
+  
+  // User Progress operations
+  getUserProgress(userId: string): Promise<UserProgress | null>;
+  updateUserProgress(userId: string, progress: Partial<UserProgress>): Promise<UserProgress>;
+  completeChapter(userId: string, chapterNumber: number): Promise<UserProgress>;
+  unlockDimension(userId: string, dimension: string): Promise<UserProgress>;
+  masterSacredShape(userId: string, shape: string): Promise<UserProgress>;
+  
+  // Game progression operations
+  getUserGameProgress(userId: string): Promise<GameProgressResponse>;
+  updateChapterProgress(userId: string, chapterId: string): Promise<UserProgressEntry>;
+  completeChapterWithXP(userId: string, chapterNumber: number): Promise<{ user: User; progress: UserProgressEntry; xpGained: number; levelUp: boolean }>;
+  getAvailableChapters(userId: string): Promise<SacredMatrixEntry[]>;
+  unlockNextChapter(userId: string): Promise<number[]>;
+  
+  // Gate progression operations
+  getGateStatus(userId: string): Promise<GateProgress[]>;
+  completeGate(userId: string, gateType: string, chapterNumber: number): Promise<GateProgress>;
+  initializeUserGates(userId: string): Promise<void>;
+  
+  // XP and Level operations
+  calculateLevel(experiencePoints: number): number;
+  getXPForNextLevel(currentLevel: number): number;
+  awardExperience(userId: string, xpAmount: number): Promise<{ user: User; levelUp: boolean }>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -480,6 +523,588 @@ export class DatabaseStorage implements IStorage {
 
     // Insert all biblical matrix data
     await db.insert(sacredMatrix).values(sacredMatrixData);
+  }
+
+  // User Progress operations
+  async getUserProgress(userId: string): Promise<UserProgress | null> {
+    const user = await this.getUser(userId);
+    if (!user) return null;
+
+    const [progressEntry] = await db
+      .select()
+      .from(userProgress)
+      .where(eq(userProgress.userId, userId));
+
+    if (!progressEntry) {
+      // Create initial progress entry
+      const [newProgress] = await db
+        .insert(userProgress)
+        .values({
+          userId,
+          currentBook: 1,
+          completedChapters: [],
+          unlockedDimensions: [],
+          sacredShapesMastered: [],
+          totalChaptersCompleted: 0,
+        })
+        .returning();
+
+      return {
+        currentBook: newProgress.currentBook as 1 | 2 | 3 | 4 | 5,
+        completedChapters: newProgress.completedChapters as number[],
+        archetype: user.archetype as 'pioneer' | 'organizer' | 'builder' | 'guardian',
+        generation: user.generation as 'gen-z' | 'millennial' | 'gen-x' | 'boomer',
+        unlockedDimensions: newProgress.unlockedDimensions as string[],
+        sacredShapesMastered: newProgress.sacredShapesMastered as string[],
+      };
+    }
+
+    return {
+      currentBook: progressEntry.currentBook as 1 | 2 | 3 | 4 | 5,
+      completedChapters: progressEntry.completedChapters as number[],
+      archetype: user.archetype as 'pioneer' | 'organizer' | 'builder' | 'guardian',
+      generation: user.generation as 'gen-z' | 'millennial' | 'gen-x' | 'boomer',
+      unlockedDimensions: progressEntry.unlockedDimensions as string[],
+      sacredShapesMastered: progressEntry.sacredShapesMastered as string[],
+    };
+  }
+
+  async updateUserProgress(userId: string, progress: Partial<UserProgress>): Promise<UserProgress> {
+    const existingProgress = await this.getUserProgress(userId);
+    if (!existingProgress) {
+      throw new Error('User progress not found');
+    }
+
+    const updateData: Partial<InsertUserProgress> = {};
+    
+    if (progress.currentBook !== undefined) {
+      updateData.currentBook = progress.currentBook;
+    }
+    if (progress.completedChapters !== undefined) {
+      updateData.completedChapters = progress.completedChapters;
+      updateData.totalChaptersCompleted = progress.completedChapters.length;
+      updateData.lastChapterCompleted = Math.max(...progress.completedChapters);
+    }
+    if (progress.unlockedDimensions !== undefined) {
+      updateData.unlockedDimensions = progress.unlockedDimensions;
+    }
+    if (progress.sacredShapesMastered !== undefined) {
+      updateData.sacredShapesMastered = progress.sacredShapesMastered;
+    }
+
+    const [updatedProgress] = await db
+      .update(userProgress)
+      .set(updateData)
+      .where(eq(userProgress.userId, userId))
+      .returning();
+
+    return await this.getUserProgress(userId) as UserProgress;
+  }
+
+  async completeChapter(userId: string, chapterNumber: number): Promise<UserProgress> {
+    const currentProgress = await this.getUserProgress(userId);
+    if (!currentProgress) {
+      throw new Error('User progress not found');
+    }
+
+    const completedChapters = [...currentProgress.completedChapters];
+    if (!completedChapters.includes(chapterNumber)) {
+      completedChapters.push(chapterNumber);
+      completedChapters.sort((a, b) => a - b);
+    }
+
+    // Get the chapter's geometry icon from biblical matrix
+    const chapterMatrixEntry = await this.getBiblicalMatrixByChapter(chapterNumber);
+    let sacredShapesMastered = [...currentProgress.sacredShapesMastered];
+    
+    if (chapterMatrixEntry && chapterMatrixEntry.geometryIcon) {
+      // Add the geometry icon to mastered shapes if not already present
+      if (!sacredShapesMastered.includes(chapterMatrixEntry.geometryIcon)) {
+        sacredShapesMastered.push(chapterMatrixEntry.geometryIcon);
+      }
+    }
+
+    // Determine current book based on chapter
+    let currentBook = 1;
+    if (chapterNumber >= 21) currentBook = 5;
+    else if (chapterNumber >= 16) currentBook = 4;
+    else if (chapterNumber >= 11) currentBook = 3;
+    else if (chapterNumber >= 6) currentBook = 2;
+
+    return await this.updateUserProgress(userId, {
+      currentBook: currentBook as 1 | 2 | 3 | 4 | 5,
+      completedChapters,
+      sacredShapesMastered,
+    });
+  }
+
+  async unlockDimension(userId: string, dimension: string): Promise<UserProgress> {
+    const currentProgress = await this.getUserProgress(userId);
+    if (!currentProgress) {
+      throw new Error('User progress not found');
+    }
+
+    const unlockedDimensions = [...currentProgress.unlockedDimensions];
+    if (!unlockedDimensions.includes(dimension)) {
+      unlockedDimensions.push(dimension);
+    }
+
+    return await this.updateUserProgress(userId, {
+      unlockedDimensions,
+    });
+  }
+
+  async masterSacredShape(userId: string, shape: string): Promise<UserProgress> {
+    const currentProgress = await this.getUserProgress(userId);
+    if (!currentProgress) {
+      throw new Error('User progress not found');
+    }
+
+    const sacredShapesMastered = [...currentProgress.sacredShapesMastered];
+    if (!sacredShapesMastered.includes(shape)) {
+      sacredShapesMastered.push(shape);
+    }
+
+    return await this.updateUserProgress(userId, {
+      sacredShapesMastered,
+    });
+  }
+
+  // Generation detection and management
+  async setUserGeneration(userId: string, birthYear: number): Promise<UserGeneration> {
+    const generation = this.determineGeneration(birthYear);
+    
+    const [result] = await db.insert(userGeneration).values({
+      userId,
+      birthYear,
+      generation,
+    }).onConflictDoUpdate({
+      target: userGeneration.userId,
+      set: { birthYear, generation, detectedAt: new Date() }
+    }).returning();
+    
+    return result;
+  }
+
+  async getUserGeneration(userId: string): Promise<UserGeneration | null> {
+    const [result] = await db.select()
+      .from(userGeneration)
+      .where(eq(userGeneration.userId, userId))
+      .limit(1);
+    
+    return result || null;
+  }
+
+  private determineGeneration(birthYear: number): string {
+    if (birthYear >= 1997) return 'gen-z';
+    if (birthYear >= 1981) return 'millennial';
+    if (birthYear >= 1965) return 'gen-x';
+    if (birthYear >= 1946) return 'boomer';
+    return 'silent';
+  }
+
+  // Chapter progression management
+  async getUserChapterProgress(userId: string): Promise<ChapterProgress[]> {
+    return await db.select()
+      .from(chapterProgress)
+      .where(eq(chapterProgress.userId, userId))
+      .orderBy(asc(chapterProgress.chapterNumber));
+  }
+
+
+  async unlockChapter(userId: string, chapterNumber: number): Promise<ChapterProgress> {
+    // Check if already exists
+    const [existing] = await db.select()
+      .from(chapterProgress)
+      .where(and(
+        eq(chapterProgress.userId, userId),
+        eq(chapterProgress.chapterNumber, chapterNumber)
+      ))
+      .limit(1);
+    
+    if (existing) {
+      return existing;
+    }
+    
+    // Create new progress entry
+    const [result] = await db.insert(chapterProgress).values({
+      userId,
+      chapterNumber,
+      completed: false,
+    }).returning();
+    
+    return result;
+  }
+
+  async completeChapterProgress(
+    userId: string, 
+    chapterNumber: number, 
+    assessmentScore: number = 0,
+    practiceMinutes: number = 0
+  ): Promise<ChapterProgress> {
+    const [result] = await db.update(chapterProgress)
+      .set({
+        completed: true,
+        completedAt: new Date(),
+        assessmentScore,
+        practiceMinutes,
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(chapterProgress.userId, userId),
+        eq(chapterProgress.chapterNumber, chapterNumber)
+      ))
+      .returning();
+    
+    if (!result) {
+      // Create if doesn't exist
+      const [newResult] = await db.insert(chapterProgress).values({
+        userId,
+        chapterNumber,
+        completed: true,
+        completedAt: new Date(),
+        assessmentScore,
+        practiceMinutes,
+      }).returning();
+      return newResult;
+    }
+    
+    return result;
+  }
+
+  // Chapter assessments
+  async createChapterAssessment(
+    userId: string,
+    chapterNumber: number,
+    responses: any,
+    score: number,
+    passed: boolean
+  ): Promise<ChapterAssessment> {
+    const [result] = await db.insert(chapterAssessments).values({
+      userId,
+      chapterNumber,
+      responses,
+      score,
+      passed,
+    }).returning();
+    
+    return result;
+  }
+
+  async getChapterAssessments(userId: string, chapterNumber?: number): Promise<ChapterAssessment[]> {
+    const conditions = [eq(chapterAssessments.userId, userId)];
+    
+    if (chapterNumber) {
+      conditions.push(eq(chapterAssessments.chapterNumber, chapterNumber));
+    }
+    
+    return await db.select()
+      .from(chapterAssessments)
+      .where(and(...conditions))
+      .orderBy(desc(chapterAssessments.completedAt));
+  }
+
+  // Book progression helpers
+  async getUserBookProgress(userId: string): Promise<{
+    book1: { completed: number; total: number; unlocked: boolean };
+    book2: { completed: number; total: number; unlocked: boolean };
+    book3: { completed: number; total: number; unlocked: boolean };
+    book4: { completed: number; total: number; unlocked: boolean };
+    book5: { completed: number; total: number; unlocked: boolean };
+  }> {
+    const progress = await this.getUserChapterProgress(userId);
+    const completed = progress.filter(p => p.completed).map(p => p.chapterNumber);
+    
+    const book1Completed = completed.filter(c => c >= 1 && c <= 5).length;
+    const book2Completed = completed.filter(c => c >= 6 && c <= 10).length;
+    const book3Completed = completed.filter(c => c >= 11 && c <= 15).length;
+    const book4Completed = completed.filter(c => c >= 16 && c <= 20).length;
+    const book5Completed = completed.filter(c => c >= 21 && c <= 27).length;
+    
+    return {
+      book1: { completed: book1Completed, total: 5, unlocked: true },
+      book2: { completed: book2Completed, total: 5, unlocked: book1Completed >= 5 },
+      book3: { completed: book3Completed, total: 5, unlocked: book2Completed >= 5 },
+      book4: { completed: book4Completed, total: 5, unlocked: book3Completed >= 5 },
+      book5: { completed: book5Completed, total: 7, unlocked: book4Completed >= 5 },
+    };
+  }
+
+  // Game progression operations
+  async getUserGameProgress(userId: string): Promise<GameProgressResponse> {
+    const user = await this.getUser(userId);
+    if (!user) throw new Error('User not found');
+
+    // Get the actual database entry instead of the interface
+    const [progressEntry] = await db
+      .select()
+      .from(userProgress)
+      .where(eq(userProgress.userId, userId));
+
+    const gates = await this.getGateStatus(userId);
+    const availableChapters = await this.getAvailableChapters(userId);
+
+    // Find next milestone
+    const completedChapters = progressEntry?.completedChapters as number[] || [];
+    const nextMilestone = this.findNextMilestone(completedChapters);
+
+    return {
+      user: {
+        id: user.id,
+        experiencePoints: user.experiencePoints || 0,
+        level: user.level || 1,
+        currentChapterId: user.currentChapterId || progressEntry?.currentChapterId || undefined,
+      },
+      progress: {
+        currentBook: progressEntry?.currentBook || 1,
+        currentChapterId: progressEntry?.currentChapterId || undefined,
+        completedChapters,
+        unlockedChapters: progressEntry?.unlockedChapters as number[] || [1],
+        totalChaptersCompleted: progressEntry?.totalChaptersCompleted || 0,
+      },
+      gates,
+      availableChapters,
+      nextMilestone,
+    };
+  }
+
+  async updateChapterProgress(userId: string, chapterId: string): Promise<UserProgressEntry> {
+    const [result] = await db
+      .update(userProgress)
+      .set({
+        currentChapterId: chapterId,
+        updatedAt: new Date(),
+      })
+      .where(eq(userProgress.userId, userId))
+      .returning();
+
+    if (!result) {
+      // Create if doesn't exist
+      const [newResult] = await db.insert(userProgress).values({
+        userId,
+        currentChapterId: chapterId,
+        currentBook: 1,
+        completedChapters: [],
+        unlockedChapters: [1],
+        unlockedDimensions: [],
+        sacredShapesMastered: [],
+        totalChaptersCompleted: 0,
+      }).returning();
+      return newResult;
+    }
+
+    return result;
+  }
+
+  async completeChapterWithXP(
+    userId: string, 
+    chapterNumber: number
+  ): Promise<{ user: User; progress: UserProgressEntry; xpGained: number; levelUp: boolean }> {
+    const user = await this.getUser(userId);
+    if (!user) throw new Error('User not found');
+
+    const currentLevel = user.level || 1;
+    const xpGained = 50; // Standard XP per chapter
+    const newXP = (user.experiencePoints || 0) + xpGained;
+    const newLevel = this.calculateLevel(newXP);
+    const levelUp = newLevel > currentLevel;
+
+    // Update user XP and level
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        experiencePoints: newXP,
+        level: newLevel,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    // Update progress by calling the existing complete chapter logic
+    const progressResult = await this.completeChapter(userId, chapterNumber);
+    
+    // Get the actual UserProgressEntry from database 
+    const [progress] = await db
+      .select()
+      .from(userProgress)
+      .where(eq(userProgress.userId, userId));
+
+    return {
+      user: updatedUser,
+      progress: progress,
+      xpGained,
+      levelUp,
+    };
+  }
+
+  async getAvailableChapters(userId: string): Promise<SacredMatrixEntry[]> {
+    const [progressEntry] = await db
+      .select()
+      .from(userProgress)
+      .where(eq(userProgress.userId, userId));
+    const unlockedChapters = progressEntry?.unlockedChapters as number[] || [1];
+
+    return await db
+      .select()
+      .from(sacredMatrix)
+      .where(sql`${sacredMatrix.chapterNumber} = ANY(${unlockedChapters})`)
+      .orderBy(asc(sacredMatrix.chapterNumber));
+  }
+
+  async unlockNextChapter(userId: string): Promise<number[]> {
+    const [progressEntry] = await db
+      .select()
+      .from(userProgress)
+      .where(eq(userProgress.userId, userId));
+    const completedChapters = progressEntry?.completedChapters as number[] || [];
+    const unlockedChapters = progressEntry?.unlockedChapters as number[] || [1];
+
+    // Golden Path logic: sequential unlocking
+    const nextChapter = Math.max(...completedChapters) + 1;
+    
+    if (nextChapter <= 27 && !unlockedChapters.includes(nextChapter)) {
+      const newUnlockedChapters = [...unlockedChapters, nextChapter];
+      
+      await db
+        .update(userProgress)
+        .set({
+          unlockedChapters: newUnlockedChapters,
+          updatedAt: new Date(),
+        })
+        .where(eq(userProgress.userId, userId));
+
+      return newUnlockedChapters;
+    }
+
+    return unlockedChapters;
+  }
+
+  // Gate progression operations
+  async getGateStatus(userId: string): Promise<GateProgress[]> {
+    return await db
+      .select()
+      .from(gateProgress)
+      .where(eq(gateProgress.userId, userId))
+      .orderBy(asc(gateProgress.chapterNumber));
+  }
+
+  async completeGate(userId: string, gateType: string, chapterNumber: number): Promise<GateProgress> {
+    const [result] = await db
+      .update(gateProgress)
+      .set({
+        completed: true,
+        completedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(and(
+        eq(gateProgress.userId, userId),
+        eq(gateProgress.gateType, gateType as any),
+        eq(gateProgress.chapterNumber, chapterNumber)
+      ))
+      .returning();
+
+    if (!result) {
+      const [newResult] = await db.insert(gateProgress).values({
+        userId,
+        gateType: gateType as any,
+        chapterNumber,
+        unlocked: true,
+        completed: true,
+        completedAt: new Date(),
+        experienceGained: 100,
+      }).returning();
+      
+      // Award bonus XP for gate completion
+      await this.awardExperience(userId, 100);
+      
+      return newResult;
+    }
+
+    // Award bonus XP for gate completion
+    await this.awardExperience(userId, 100);
+
+    return result;
+  }
+
+  async initializeUserGates(userId: string): Promise<void> {
+    const gateChapters = [
+      { gateType: 'identity_mirror', chapterNumber: 1 },
+      { gateType: 'shofar_convergence', chapterNumber: 25 },
+      { gateType: 'network_multiplication', chapterNumber: 26 },
+      { gateType: 'twelve_gate_convergence', chapterNumber: 27 },
+    ];
+
+    for (const gate of gateChapters) {
+      const existing = await db
+        .select()
+        .from(gateProgress)
+        .where(and(
+          eq(gateProgress.userId, userId),
+          eq(gateProgress.gateType, gate.gateType as any),
+          eq(gateProgress.chapterNumber, gate.chapterNumber)
+        ))
+        .limit(1);
+
+      if (existing.length === 0) {
+        await db.insert(gateProgress).values({
+          userId,
+          gateType: gate.gateType as any,
+          chapterNumber: gate.chapterNumber,
+          unlocked: gate.chapterNumber === 1, // Only chapter 1 starts unlocked
+          completed: false,
+          experienceGained: 100,
+        });
+      }
+    }
+  }
+
+  // XP and Level operations
+  calculateLevel(experiencePoints: number): number {
+    return 1 + Math.floor(experiencePoints / 100);
+  }
+
+  getXPForNextLevel(currentLevel: number): number {
+    return currentLevel * 100;
+  }
+
+  async awardExperience(userId: string, xpAmount: number): Promise<{ user: User; levelUp: boolean }> {
+    const user = await this.getUser(userId);
+    if (!user) throw new Error('User not found');
+
+    const currentLevel = user.level || 1;
+    const newXP = (user.experiencePoints || 0) + xpAmount;
+    const newLevel = this.calculateLevel(newXP);
+    const levelUp = newLevel > currentLevel;
+
+    const [updatedUser] = await db
+      .update(users)
+      .set({
+        experiencePoints: newXP,
+        level: newLevel,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId))
+      .returning();
+
+    return { user: updatedUser, levelUp };
+  }
+
+  // Helper method for finding next milestone
+  private findNextMilestone(completedChapters: number[]): { chapterNumber: number; isGate: boolean; title: string } | undefined {
+    const milestones = [5, 10, 15, 20, 25, 26, 27];
+    const gates = [1, 25, 26, 27];
+    
+    for (const milestone of milestones) {
+      if (!completedChapters.includes(milestone)) {
+        return {
+          chapterNumber: milestone,
+          isGate: gates.includes(milestone),
+          title: gates.includes(milestone) ? `Gate ${milestone}` : `Chapter ${milestone} Milestone`,
+        };
+      }
+    }
+    
+    return undefined;
   }
 }
 

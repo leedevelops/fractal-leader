@@ -3,6 +3,11 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 
 const app = express();
+
+// CRITICAL SECURITY: Preserve raw body for Stripe webhook signature verification
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+
+// Standard JSON parsing for all other routes
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));
 

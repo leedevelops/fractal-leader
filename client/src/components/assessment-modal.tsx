@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useLocation } from "wouter";
 
 interface AssessmentModalProps {
   open: boolean;
@@ -111,6 +112,7 @@ export default function AssessmentModal({ open, onOpenChange, stage }: Assessmen
   const [responses, setResponses] = useState<Record<number, string>>({});
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const questions = assessmentQuestions[stage as keyof typeof assessmentQuestions] || assessmentQuestions.r1;
   const totalQuestions = questions.length;
@@ -143,18 +145,25 @@ export default function AssessmentModal({ open, onOpenChange, stage }: Assessmen
       const response = await apiRequest("PATCH", `/api/assessments/${id}/complete`, { results });
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ['/api/progress'] });
       queryClient.invalidateQueries({ queryKey: ['/api/assessments'] });
       queryClient.invalidateQueries({ queryKey: ['/api/auth/user'] });
       
+      const assessmentResults = calculateResults();
+      
       toast({
         title: "Assessment Complete",
-        description: "Your leadership profile has been updated.",
+        description: `You are a ${assessmentResults.archetype} leader. Redirecting to your personalized matrix...`,
       });
       
       onOpenChange(false);
       resetAssessment();
+      
+      // Redirect to matrix with archetype and starting chapter
+      setTimeout(() => {
+        setLocation(`/matrix?chapter=1&archetype=${assessmentResults.archetype}&generation=${stage}`);
+      }, 1500);
     },
     onError: (error) => {
       console.error("Error completing assessment:", error);
@@ -292,9 +301,9 @@ export default function AssessmentModal({ open, onOpenChange, stage }: Assessmen
               <DialogTitle className="text-xl font-semibold">
                 {getStageTitle(stage)}
               </DialogTitle>
-              <p className="text-sm text-muted-foreground">
+              <DialogDescription className="text-sm text-muted-foreground">
                 {getStageDescription(stage)}
-              </p>
+              </DialogDescription>
             </div>
             <div className="hebrew-letter text-2xl">{getHebrewLetter(stage)}</div>
           </div>

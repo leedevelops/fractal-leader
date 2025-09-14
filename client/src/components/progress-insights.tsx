@@ -7,14 +7,15 @@ import { useQuery } from "@tanstack/react-query";
 export default function ProgressInsights() {
   const { user } = useAuth() as any;
 
+  // TEMPORARILY DISABLED: These queries were causing infinite loops and Firefox crashes
   const { data: progress } = useQuery({
     queryKey: ['/api/progress'],
-    enabled: !!user,
+    enabled: false, // DISABLED to stop browser crash
   });
 
   const { data: practices } = useQuery({
     queryKey: ['/api/practices'],
-    enabled: !!user,
+    enabled: false, // DISABLED to stop browser crash
   });
 
   // Calculate weekly completion from practices  

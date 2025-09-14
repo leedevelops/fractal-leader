@@ -16,6 +16,7 @@ import Assessment from "@/pages/assessment";
 import Matrix from "@/pages/matrix";
 import Chat from "@/pages/chat";
 import DemoLogin from "@/pages/demo-login";
+import GateChallenge from "@/pages/gate-challenge";
 
 function Router() {
   const { isAuthenticated, isLoading } = useAuth();
@@ -27,6 +28,12 @@ function Router() {
       <Route path="/subscribe" component={Subscribe} />
       <Route path="/matrix" component={Matrix} />
       <Route path="/demo-login" component={DemoLogin} />
+      
+      {/* Gate challenge routes - accessible to authenticated users */}
+      <Route path="/gate/identity-mirror" component={GateChallenge} />
+      <Route path="/gate/shofar-convergence" component={GateChallenge} />
+      <Route path="/gate/network-multiplication" component={GateChallenge} />
+      <Route path="/gate/twelve-gate-convergence" component={GateChallenge} />
       
       {isLoading || !isAuthenticated ? (
         <>

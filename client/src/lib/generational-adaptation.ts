@@ -1,6 +1,6 @@
 // Generational adaptation engine for UI and content delivery
 
-export type Generation = 'gen_z' | 'millennial' | 'gen_x' | 'boomer';
+export type Generation = 'gen_z' | 'millennial' | 'gen_x' | 'boomer' | 'silent';
 
 export interface GenerationalPreferences {
   contentFormat: 'microlearning' | 'collaborative' | 'practical' | 'structured';
@@ -58,6 +58,14 @@ const generationalPreferences: Record<Generation, GenerationalPreferences> = {
     visualStyle: 'classic',
     communicationPreference: 'phone',
   },
+  silent: {
+    contentFormat: 'structured',
+    interactionStyle: 'linear',
+    feedbackFrequency: 'comprehensive',
+    socialElements: 'mentorship',
+    visualStyle: 'classic',
+    communicationPreference: 'phone',
+  },
 };
 
 /**
@@ -100,6 +108,15 @@ const contentAdaptationRules = {
     enablePhoneSupport: true,
     enableDetailedInstructions: true,
   },
+  silent: {
+    titleFormat: (base: string) => base,
+    descriptionStyle: 'traditional-reverent',
+    durationDisplay: 'thorough-study',
+    ctaStyle: 'respectful-invitation',
+    enableClassicalApproach: true,
+    enablePrintableResources: true,
+    enableDetailedInstructions: true,
+  },
 };
 
 /**
@@ -110,7 +127,7 @@ export function adaptContentForGeneration(
   baseContent: Record<string, any>
 ): Record<string, AdaptedContent> {
   const preferences = generationalPreferences[generation];
-  const rules = contentAdaptationRules[generation];
+  const rules = contentAdaptationRules[generation] || contentAdaptationRules.boomer; // Fallback to boomer rules
   
   const adaptedContent: Record<string, AdaptedContent> = {};
   
@@ -173,6 +190,8 @@ function adaptDuration(duration: string, generation: Generation): string {
       return `Investment: ${duration}`;
     case 'boomer':
       return `Duration: ${duration}`;
+    case 'silent':
+      return `Study Time: ${duration}`;
     default:
       return duration;
   }
@@ -201,6 +220,7 @@ function getGenerationalVisualElements(generation: Generation): string[] {
     millennial: ['avatars', 'collaboration-icons', 'peer-ratings', 'group-progress'],
     gen_x: ['charts', 'kpi-widgets', 'trend-indicators', 'integration-status'],
     boomer: ['step-indicators', 'completion-checkboxes', 'detailed-guides', 'phone-numbers'],
+    silent: ['classic-indicators', 'traditional-checkboxes', 'comprehensive-guides', 'print-options'],
   };
   
   return visualMap[generation] || [];
@@ -364,6 +384,13 @@ export function getUIAdaptationSettings(generation: Generation): {
       animations: false,
       complexity: 'comprehensive' as const,
     },
+    silent: {
+      colorScheme: 'traditional-reverent',
+      typography: 'classic-serif',
+      spacing: 'generous',
+      animations: false,
+      complexity: 'comprehensive' as const,
+    },
   };
   
   return adaptations[generation];
@@ -470,6 +497,29 @@ export function generateOnboardingFlow(generation: Generation): Array<{
         description: 'Book a one-on-one session with our onboarding specialist',
         action: 'Schedule Call',
         estimatedTime: '30 min',
+      },
+    ],
+    silent: [
+      {
+        step: 1,
+        title: 'Welcome & Orientation',
+        description: 'Thorough introduction to biblical leadership principles and platform purpose',
+        action: 'Begin Orientation',
+        estimatedTime: '25 min',
+      },
+      {
+        step: 2,
+        title: 'Complete Assessment',
+        description: 'Thoughtful evaluation of your leadership calling and spiritual gifts',
+        action: 'Take Assessment',
+        estimatedTime: '20 min',
+      },
+      {
+        step: 3,
+        title: 'Personal Consultation',
+        description: 'Connect with a ministry leader for personalized guidance and prayer',
+        action: 'Schedule Meeting',
+        estimatedTime: '45 min',
       },
     ],
   };

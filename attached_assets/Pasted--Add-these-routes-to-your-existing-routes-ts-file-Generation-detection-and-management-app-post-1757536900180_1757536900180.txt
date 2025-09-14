@@ -1,0 +1,236 @@
+// Add these routes to your existing routes.ts file
+
+// Generation detection and management
+app.post('/api/user/generation', async (req, res) => {
+  try {
+    const { birthYear, userId } = req.body;
+    
+    if (!birthYear || !userId) {
+      return res.status(400).json({ message: "Birth year and user ID required" });
+    }
+    
+    const generation = await storage.setUserGeneration(userId, birthYear);
+    res.json(generation);
+  } catch (error) {
+    console.error("Error setting user generation:", error);
+    res.status(500).json({ message: "Failed to set generation" });
+  }
+});
+
+app.get('/api/user/:userId/generation', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const generation = await storage.getUserGeneration(userId);
+    
+    if (!generation) {
+      return res.status(404).json({ message: "Generation not found" });
+    }
+    
+    res.json(generation);
+  } catch (error) {
+    console.error("Error fetching user generation:", error);
+    res.status(500).json({ message: "Failed to fetch generation" });
+  }
+});
+
+// Chapter progression routes
+app.get('/api/chapters/available/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const chapterAccess = await storage.getAvailableChapters(userId);
+    res.json(chapterAccess);
+  } catch (error) {
+    console.error("Error fetching available chapters:", error);
+    res.status(500).json({ message: "Failed to fetch available chapters" });
+  }
+});
+
+app.get('/api/user/:userId/progress', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const chapterProgress = await storage.getUserChapterProgress(userId);
+    const bookProgress = await storage.getUserBookProgress(userId);
+    
+    res.json({
+      chapters: chapterProgress,
+      books: bookProgress,
+    });
+  } catch (error) {
+    console.error("Error fetching user progress:", error);
+    res.status(500).json({ message: "Failed to fetch progress" });
+  }
+});
+
+app.post('/api/chapters/:chapterNumber/unlock', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub || (req.session as any)?.userId;
+    const chapterNumber = parseInt(req.params.chapterNumber);
+    
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+    
+    // Check if user has access to this chapter
+    const available = await storage.getAvailableChapters(userId);
+    if (!available.available.includes(chapterNumber)) {
+      return res.status(403).json({ message: "Chapter not yet available" });
+    }
+    
+    const progress = await storage.unlockChapter(userId, chapterNumber);
+    res.json(progress);
+  } catch (error) {
+    console.error("Error unlocking chapter:", error);
+    res.status(500).json({ message: "Failed to unlock chapter" });
+  }
+});
+
+app.post('/api/chapters/:chapterNumber/complete', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub || (req.session as any)?.userId;
+    const chapterNumber = parseInt(req.params.chapterNumber);
+    const { assessmentScore = 0, practiceMinutes = 0 } = req.body;
+    
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+    
+    const progress = await storage.completeChapter(
+      userId, 
+      chapterNumber, 
+      assessmentScore, 
+      practiceMinutes
+    );
+    
+    res.json(progress);
+  } catch (error) {
+    console.error("Error completing chapter:", error);
+    res.status(500).json({ message: "Failed to complete chapter" });
+  }
+});
+
+// Chapter assessments
+app.post('/api/chapters/:chapterNumber/assessment', isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = req.user.claims.sub || (req.session as any)?.userId;
+    const chapterNumber = parseInt(req.params.chapterNumber);
+    const { responses, score, passed } = req.body;
+    
+    if (!userId) {
+      return res.status(401).json({ message: "User not authenticated" });
+    }
+    
+    const assessment = await storage.createChapterAssessment(
+      userId,
+      chapterNumber,
+      responses,
+      score,
+      passed
+    );
+    
+    // If passed, complete the chapter
+    if (passed) {
+      await storage.completeChapter(userId, chapterNumber, score);
+    }
+    
+    res.json(assessment);
+  } catch (error) {
+    console.error("Error submitting chapter assessment:", error);
+    res.status(500).json({ message: "Failed to submit assessment" });
+  }
+});
+
+app.get('/api/user/:userId/assessments/:chapterNumber?', async (req, res) => {
+  try {
+    const { userId, chapterNumber } = req.params;
+    const chapterNum = chapterNumber ? parseInt(chapterNumber) : undefined;
+    
+    const assessments = await storage.getChapterAssessments(userId, chapterNum);
+    res.json(assessments);
+  } catch (error) {
+    console.error("Error fetching assessments:", error);
+    res.status(500).json({ message: "Failed to fetch assessments" });
+  }
+});
+
+// Public assessment submission (for non-authenticated users)
+app.post('/api/assessment/public-submit', async (req, res) => {
+  try {
+    const { responses, birthYear, email } = req.body;
+    
+    if (!responses || !birthYear) {
+      return res.status(400).json({ message: "Responses and birth year required" });
+    }
+    
+    // Calculate archetype from responses
+    const archetype = calculateArchetypeFromResponses(responses);
+    
+    // Determine generation
+    const generation = determineGeneration(birthYear);
+    
+    // Store in session for later use
+    (req.session as any).assessmentResults = {
+      archetype,
+      generation,
+      birthYear,
+      email: email || null,
+      submittedAt: new Date().toISOString(),
+      responses
+    };
+    
+    res.json({
+      archetype,
+      generation,
+      nextStep: `/matrix?archetype=${archetype}&generation=${generation}`,
+      message: "Assessment completed! Create an account to save your progress."
+    });
+  } catch (error) {
+    console.error("Error submitting public assessment:", error);
+    res.status(500).json({ message: "Failed to submit assessment" });
+  }
+});
+
+// Helper function for calculating archetype
+function calculateArchetypeFromResponses(responses: Record<string, string>): string {
+  const scores = {
+    pioneer: 0,
+    organizer: 0,
+    builder: 0,
+    guardian: 0,
+  };
+  
+  Object.values(responses).forEach(response => {
+    switch (response) {
+      case 'vision':
+      case 'pioneering':
+      case 'innovation':
+        scores.pioneer++;
+        break;
+      case 'relationships':
+      case 'collaboration':
+      case 'collaborative_agreements':
+        scores.organizer++;
+        break;
+      case 'analysis':
+      case 'building':
+      case 'execution':
+        scores.builder++;
+        break;
+      case 'clear_expectations':
+      case 'flexible_guidelines':
+        scores.guardian++;
+        break;
+    }
+  });
+  
+  return Object.entries(scores).reduce((a, b) => 
+    scores[a[0] as keyof typeof scores] > scores[b[0] as keyof typeof scores] ? a : b
+  )[0];
+}
+
+function determineGeneration(birthYear: number): string {
+  if (birthYear >= 1997) return 'gen-z';
+  if (birthYear >= 1981) return 'millennial';
+  if (birthYear >= 1965) return 'gen-x';
+  if (birthYear >= 1946) return 'boomer';
+  return 'silent';
+}

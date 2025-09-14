@@ -45,21 +45,22 @@ const genesisStages = [
 export default function DevelopmentProgress() {
   const { user } = useAuth() as any;
   
+  // TEMPORARILY DISABLED: These queries were causing infinite loops and Firefox crashes
   const { data: progress } = useQuery({
     queryKey: ['/api/progress'],
-    enabled: !!user,
+    enabled: false, // DISABLED to stop browser crash
   });
 
   const { data: assessments } = useQuery({
     queryKey: ['/api/assessments'],
-    enabled: !!user,
+    enabled: false, // DISABLED to stop browser crash
   });
 
   const getStageStatus = (stageId: string) => {
     if (!progress) return { status: 'locked', progress: 0 };
     
-    const completed = progress.completedStages || [];
-    const current = progress.currentStage;
+    const completed = (progress as any)?.completedStages || [];
+    const current = (progress as any)?.currentStage;
     
     if (completed.includes(stageId)) {
       return { status: 'complete', progress: 100 };
@@ -147,7 +148,7 @@ export default function DevelopmentProgress() {
           })}
           
           {/* Hidden Track */}
-          {progress?.completedStages?.length >= 5 && (
+          {((progress as any)?.completedStages?.length >= 5) && (
             <div className="flex items-center space-x-4 p-4 bg-gradient-to-r from-cosmic-golden/10 to-cosmic-silver/10 rounded-lg border border-cosmic-golden/30">
               <div className="w-10 h-10 bg-cosmic-golden/20 rounded-full flex items-center justify-center">
                 <span className="hebrew-letter text-lg">ו</span>

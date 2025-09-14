@@ -13,178 +13,165 @@ import { FMData, FMNode } from "./fractal-matrix/types";
 export default function FractalVisualization() {
   const { user } = useAuth() as any;
   const [isPlaying, setIsPlaying] = useState(false);
-  const [currentDay, setCurrentDay] = useState(3);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
-  // Get current chapter data from Biblical Matrix
-  const { data: currentChapter } = useQuery({
-    queryKey: ['/api/biblical-matrix/chapter', currentDay],
-    enabled: !!currentDay,
+  // Get all biblical matrix data for 27-chapter display
+  const { data: allChapters } = useQuery({
+    queryKey: ['/api/biblical-matrix'],
+    enabled: true,
   });
 
-  // Generate fractal data based on Hebrew name and biblical data
+  // Generate 27-chapter matrix data
   const fractalData: FMData = useMemo(() => {
-    if (!user?.hebrewName) {
-      return {
-        nodes: [
-          { id: "hub-center", kind: "Hub", label: "פ", element: "Spirit" },
-          { id: "chapter-1", kind: "Chapter", label: "Genesis", element: "Fire", chapter: 1 },
-          { id: "stone-aleph", kind: "Stone", label: "א", element: "Air" },
-          { id: "tribe-judah", kind: "Tribe", label: "Judah", element: "Fire" },
-          { id: "prophet-moses", kind: "Prophet", label: "Moses", element: "Earth" },
-          { id: "apostle-paul", kind: "Apostle", label: "Paul", element: "Water" },
-          { id: "frequency-260", kind: "Frequency", label: "260Hz", element: "Spirit" },
-          { id: "book-torah", kind: "Book", label: "Torah", element: "Fire" },
-          { id: "dimension-alpha", kind: "Dimension", label: "Aleph", element: "Spirit" }
-        ],
-        edges: [
-          { source: "hub-center", target: "chapter-1", relation: "Default" },
-          { source: "chapter-1", target: "stone-aleph", relation: "Default" },
-          { source: "stone-aleph", target: "tribe-judah", relation: "Default" },
-          { source: "prophet-moses", target: "apostle-paul", relation: "PropheticApostolic" },
-          { source: "frequency-260", target: "book-torah", relation: "Default" }
-        ]
-      };
-    }
+    const chapterTitles = {
+      1: "Leadership Begins at the Altar", 2: "The Tripartite Leader", 3: "Why We Had to Leave Eden",
+      4: "Formation in Exile", 5: "The Seed Hidden in the Dust", 6: "Jesus as the Tree of Life",
+      7: "The Divine Pattern", 8: "The Pattern Keeper", 9: "The Fractal Pattern of Leadership",
+      10: "The Invisible Root System", 11: "Vision of God", 12: "Vision of Self", 13: "Vision of Mission",
+      14: "The Wounded Visionary", 15: "Sacred Sight", 16: "Emotional Intelligence and Passion",
+      17: "Intelligent Action", 18: "Embodied Leadership", 19: "Mentors and Mirrors", 20: "The Body of Christ",
+      21: "Yeshua: The Embodiment of YHWH", 22: "The Spiral and the Sword", 23: "The Name and the Nations",
+      24: "Pentecost, Fire, and the Echo of Eden", 25: "The Commissioning Pattern", 26: "The Apostolic Flame",
+      27: "The Pattern Complete"
+    };
 
-    const hebrewLetters = user.hebrewName.split('');
-    const fractalPoints = generateFractal(user.hebrewName);
-    
-    const nodes: FMNode[] = [
-      // Hub - center with main Hebrew letter
-      { 
-        id: "hub-center", 
-        kind: "Hub", 
-        label: hebrewLetters[0] || "פ", 
-        element: "Spirit" 
-      },
-      // Chapter - current day/chapter
-      { 
-        id: `chapter-${currentDay}`, 
-        kind: "Chapter", 
-        label: (currentChapter as any)?.name || `Day ${currentDay}`, 
-        element: "Fire",
-        chapter: currentDay 
-      },
-      // Stones - Hebrew letters
-      ...hebrewLetters.slice(1, 4).map((letter: string, index: number) => ({
-        id: `stone-${index}`,
-        kind: "Stone" as const,
-        label: letter,
-        element: (["Air", "Water", "Earth"] as const)[index % 3]
-      })),
-      // Tribes - based on fractal points
-      ...fractalPoints.slice(0, 3).map((point: any, index: number) => ({
-        id: `tribe-${index}`,
-        kind: "Tribe" as const,
-        label: `Tribe ${index + 1}`,
-        element: (["Fire", "Air", "Water"] as const)[index % 3]
-      })),
-      // Prophet and Apostle - biblical pairing
-      {
-        id: "prophet-current",
-        kind: "Prophet",
-        label: user.archetype === "Pioneer" ? "Abraham" : user.archetype === "Builder" ? "Moses" : "David",
-        element: "Earth"
-      },
-      {
-        id: "apostle-current",
-        kind: "Apostle", 
-        label: user.archetype === "Pioneer" ? "Paul" : user.archetype === "Builder" ? "Peter" : "John",
-        element: "Water"
-      },
-      // Frequency - sacred frequency for current day
-      {
-        id: "frequency-current",
-        kind: "Frequency",
-        label: "260Hz",
-        element: "Spirit"
-      },
-      // Book - current biblical context
-      {
-        id: "book-current",
-        kind: "Book",
-        label: "Genesis",
-        element: "Fire"
-      },
-      // Dimension - spiritual dimension
-      {
-        id: "dimension-current",
-        kind: "Dimension",
-        label: "Aleph",
-        element: "Spirit"
-      }
+    const yhwhBooks = [
+      { name: "Yod", chapters: [1,2,3,4,5], element: "Fire" as const },
+      { name: "Heh", chapters: [6,7,8,9,10], element: "Air" as const },
+      { name: "Vav", chapters: [11,12,13,14,15], element: "Water" as const },
+      { name: "Final Heh", chapters: [16,17,18,19,20], element: "Earth" as const },
+      { name: "YESHUA", chapters: [21,22,23,24,25,26,27], element: "Spirit" as const }
     ];
 
+    // Create all 27 chapter nodes
+    const nodes: FMNode[] = [
+      // Central hub
+      { id: "hub-center", kind: "Hub", label: "YHWH → YESHUA", element: "Spirit" },
+      
+      // All 27 chapters
+      ...Array.from({length: 27}, (_, i) => {
+        const chapterNum = i + 1;
+        const book = yhwhBooks.find(b => b.chapters.includes(chapterNum));
+        return {
+          id: `chapter-${chapterNum}`,
+          kind: "Chapter" as const,
+          label: `Ch ${chapterNum}: ${chapterTitles[chapterNum as keyof typeof chapterTitles]}`,
+          element: book?.element || "Fire",
+          chapter: chapterNum
+        };
+      }),
+
+      // YHWH letter nodes
+      ...yhwhBooks.map((book) => ({
+        id: `book-${book.name}`,
+        kind: "Book" as const,
+        label: book.name,
+        element: book.element
+      })),
+
+      // Special gates
+      { id: "gate-identity", kind: "Stone", label: "Identity Gate (Ch 1)", element: "Fire" },
+      { id: "gate-shofar", kind: "Stone", label: "Shofar Gate (Ch 25)", element: "Spirit" },
+      { id: "gate-network", kind: "Stone", label: "Network Gate (Ch 26)", element: "Spirit" },
+      { id: "gate-convergence", kind: "Stone", label: "Convergence Gate (Ch 27)", element: "Spirit" }
+    ];
+
+    // Create edges connecting the hub to books, books to chapters, and special gates
     const edges = [
-      { source: "hub-center", target: `chapter-${currentDay}` },
-      { source: `chapter-${currentDay}`, target: "stone-0" },
-      { source: "stone-0", target: "tribe-0" },
-      { source: "tribe-0", target: "prophet-current" },
-      { source: "prophet-current", target: "apostle-current", relation: "PropheticApostolic" as const },
-      { source: "frequency-current", target: "book-current" },
-      { source: "book-current", target: "dimension-current" },
-      // Connect frequency to hub for meditation
-      { source: "hub-center", target: "frequency-current" }
+      // Hub to books
+      ...yhwhBooks.map(book => ({ 
+        source: "hub-center", 
+        target: `book-${book.name}` 
+      })),
+      
+      // Books to their chapters
+      ...yhwhBooks.flatMap(book => 
+        book.chapters.map(chapterNum => ({
+          source: `book-${book.name}`,
+          target: `chapter-${chapterNum}`
+        }))
+      ),
+
+      // Sequential chapter connections (Golden Path)
+      ...Array.from({length: 26}, (_, i) => ({
+        source: `chapter-${i + 1}`,
+        target: `chapter-${i + 2}`,
+        relation: "Sequential" as const
+      })),
+
+      // Special gate connections
+      { source: "chapter-1", target: "gate-identity", relation: "Default" as const },
+      { source: "chapter-25", target: "gate-shofar", relation: "Default" as const },
+      { source: "chapter-26", target: "gate-network", relation: "Default" as const },
+      { source: "chapter-27", target: "gate-convergence", relation: "Default" as const }
     ];
 
     return { nodes, edges };
-  }, [user?.hebrewName, user?.archetype, currentDay, currentChapter]);
+  }, [allChapters, user]);
 
-  const handleMeditation = async () => {
+  const startFrequency = () => {
     setIsPlaying(true);
-    try {
-      await startFrequencyMeditation(260);
-    } catch (error) {
-      console.error("Error starting meditation:", error);
-    } finally {
+    const frequency = getMatrixFrequency(1); // Default to chapter 1
+    startFrequencyMeditation(frequency, 30000); // 30 seconds
+    
+    setTimeout(() => {
       setIsPlaying(false);
-    }
+    }, 30000);
   };
 
-  const handleRegenerate = () => {
-    // Trigger fractal regeneration by advancing day
-    setCurrentDay(prev => (prev % 6) + 1);
-    setSelectedNodeId(null);
-  };
-
-  const handleNodeSelect = (nodeId: string, node?: FMNode) => {
+  const handleNodeSelect = (nodeId: string) => {
     setSelectedNodeId(nodeId);
-    if (node?.kind === "Frequency") {
-      // Auto-trigger meditation when frequency node is selected
-      handleMeditation();
-    }
   };
 
-  const handleExport = (data: { png: string; svg: string; json: string; url: string }) => {
-    // Download the PNG
-    const link = document.createElement('a');
-    link.download = `fractal-pattern-${user?.hebrewName || 'pattern'}-day${currentDay}.png`;
-    link.href = data.png;
-    link.click();
+  const handleExport = (data: { png: string; svg: string; json: string; url: string; }) => {
+    console.log('Exporting fractal data:', data);
   };
 
   return (
-    <Card className="bg-card rounded-lg border border-border" data-testid="card-fractal-visualization">
+    <Card className="w-full bg-cosmic-void/20 border-cosmic-golden/30" data-testid="card-fractal-visualization">
       <CardHeader>
         <div className="flex items-center justify-between">
-          <CardTitle className="text-2xl font-semibold">Your Fractal Pattern</CardTitle>
-          <div className="text-sm text-muted-foreground">
-            <span data-testid="text-hebrew-name">{user?.hebrewName || "יהושע"}</span> • Day <span data-testid="text-current-day">{currentDay}</span> of 6
+          <CardTitle className="text-xl font-semibold text-cosmic-golden">
+            27-Chapter Biblical Matrix
+          </CardTitle>
+          <div className="flex items-center space-x-2">
+            <Badge variant="outline" className="border-cosmic-golden/50 text-cosmic-golden text-xs">
+              YHWH → YESHUA Pattern
+            </Badge>
+            <Button 
+              onClick={startFrequency}
+              disabled={isPlaying}
+              size="sm"
+              variant="outline"
+              className="border-cosmic-golden/30 hover:border-cosmic-golden"
+              data-testid="button-frequency-meditation"
+            >
+              {isPlaying ? (
+                <>
+                  <Headphones className="w-4 h-4 mr-2" />
+                  Playing...
+                </>
+              ) : (
+                <>
+                  <Play className="w-4 h-4 mr-2" />
+                  Sacred Frequency
+                </>
+              )}
+            </Button>
           </div>
         </div>
       </CardHeader>
       
       <CardContent>
-        <div className="relative h-96 bg-cosmic-void/30 rounded-lg overflow-hidden mb-4">
+        <div className="relative w-full h-[80vh] bg-cosmic-void/30 rounded-lg overflow-hidden mb-4">
           <FractalMatrix
             data={fractalData}
-            width={800}
-            height={384}
+            width={1400}
+            height={800}
             enableAudio={true}
             mysteryMode={false}
             initialFocus="Hub"
-            sacredOverlays={["Hub"]}
+            sacredOverlays={["Hub", "Chapter"]}
             onSelect={handleNodeSelect}
             onExport={handleExport}
             theme={{
@@ -216,40 +203,27 @@ export default function FractalVisualization() {
             </div>
           )}
         </div>
-        
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Button 
-              onClick={handleMeditation}
-              disabled={isPlaying}
-              className="px-4 py-2"
-              data-testid="button-meditate"
-            >
-              <Play className="w-4 h-4 mr-2" />
-              {isPlaying ? "Meditating..." : "Meditate"}
-            </Button>
-            <Button 
-              variant="secondary"
-              onClick={handleRegenerate}
-              className="px-4 py-2"
-              data-testid="button-regenerate"
-            >
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Regenerate
-            </Button>
+
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-xs">
+          <div className="bg-red-900/20 p-2 rounded border border-red-500/30">
+            <div className="font-semibold text-red-400">Yod (י) - Chapters 1-5</div>
+            <div className="text-muted-foreground">Identity & Formation</div>
           </div>
-          
-          <div className="flex items-center space-x-4">
-            <div className="text-sm text-muted-foreground">
-              Biblical Archetype: <span className="text-cosmic-golden" data-testid="text-biblical-archetype">
-                {user?.archetype || "The Pioneer"}
-              </span>
-            </div>
-            {selectedNodeId && (
-              <Badge variant="outline" className="text-cosmic-golden border-cosmic-golden/50">
-                Node Selected
-              </Badge>
-            )}
+          <div className="bg-blue-900/20 p-2 rounded border border-blue-500/30">
+            <div className="font-semibold text-blue-400">Heh (ה) - Chapters 6-10</div>
+            <div className="text-muted-foreground">Patterns & Alignment</div>
+          </div>
+          <div className="bg-teal-900/20 p-2 rounded border border-teal-500/30">
+            <div className="font-semibold text-teal-400">Vav (ו) - Chapters 11-15</div>
+            <div className="text-muted-foreground">Vision & Clarity</div>
+          </div>
+          <div className="bg-green-900/20 p-2 rounded border border-green-500/30">
+            <div className="font-semibold text-green-400">Final Heh (ה) - Chapters 16-20</div>
+            <div className="text-muted-foreground">Embodied Wisdom</div>
+          </div>
+          <div className="bg-yellow-900/20 p-2 rounded border border-yellow-500/30">
+            <div className="font-semibold text-yellow-400">YESHUA (ש) - Chapters 21-27</div>
+            <div className="text-muted-foreground">Christ Pattern</div>
           </div>
         </div>
       </CardContent>

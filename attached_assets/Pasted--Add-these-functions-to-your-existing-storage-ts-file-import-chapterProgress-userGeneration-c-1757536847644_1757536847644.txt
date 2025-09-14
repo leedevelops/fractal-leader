@@ -1,0 +1,192 @@
+// Add these functions to your existing storage.ts file
+
+import { chapterProgress, userGeneration, chapterAssessments } from './db/schema';
+import { eq, and, desc, asc } from 'drizzle-orm';
+
+// Generation detection and management
+export async function setUserGeneration(userId: string, birthYear: number): Promise<UserGeneration> {
+  const generation = determineGeneration(birthYear);
+  
+  const [result] = await db.insert(userGeneration).values({
+    userId,
+    birthYear,
+    generation,
+  }).onConflictDoUpdate({
+    target: userGeneration.userId,
+    set: { birthYear, generation, detectedAt: new Date() }
+  }).returning();
+  
+  return result;
+}
+
+export async function getUserGeneration(userId: string): Promise<UserGeneration | null> {
+  const [result] = await db.select()
+    .from(userGeneration)
+    .where(eq(userGeneration.userId, userId))
+    .limit(1);
+  
+  return result || null;
+}
+
+function determineGeneration(birthYear: number): string {
+  if (birthYear >= 1997) return 'gen-z';
+  if (birthYear >= 1981) return 'millennial';
+  if (birthYear >= 1965) return 'gen-x';
+  if (birthYear >= 1946) return 'boomer';
+  return 'silent';
+}
+
+// Chapter progression management
+export async function getUserChapterProgress(userId: string): Promise<ChapterProgress[]> {
+  return await db.select()
+    .from(chapterProgress)
+    .where(eq(chapterProgress.userId, userId))
+    .orderBy(asc(chapterProgress.chapterNumber));
+}
+
+export async function getAvailableChapters(userId: string): Promise<{
+  available: number[];
+  preview: number[];
+  completed: number[];
+}> {
+  const progress = await getUserChapterProgress(userId);
+  const completed = progress.filter(p => p.completed).map(p => p.chapterNumber);
+  
+  // Chapter 1 always available
+  const available = [1];
+  
+  // Add next chapters based on completion
+  const maxCompleted = Math.max(0, ...completed);
+  for (let i = 2; i <= Math.min(27, maxCompleted + 2); i++) {
+    if (!completed.includes(i)) {
+      available.push(i);
+      break; // Only unlock one chapter ahead
+    } else {
+      available.push(i);
+    }
+  }
+  
+  // Preview shows 1-2 chapters ahead
+  const preview = [];
+  const maxAvailable = Math.max(...available);
+  for (let i = maxAvailable + 1; i <= Math.min(27, maxAvailable + 2); i++) {
+    preview.push(i);
+  }
+  
+  return { available, preview, completed };
+}
+
+export async function unlockChapter(userId: string, chapterNumber: number): Promise<ChapterProgress> {
+  // Check if already exists
+  const [existing] = await db.select()
+    .from(chapterProgress)
+    .where(and(
+      eq(chapterProgress.userId, userId),
+      eq(chapterProgress.chapterNumber, chapterNumber)
+    ))
+    .limit(1);
+  
+  if (existing) {
+    return existing;
+  }
+  
+  // Create new progress entry
+  const [result] = await db.insert(chapterProgress).values({
+    userId,
+    chapterNumber,
+    completed: false,
+  }).returning();
+  
+  return result;
+}
+
+export async function completeChapter(
+  userId: string, 
+  chapterNumber: number, 
+  assessmentScore: number = 0,
+  practiceMinutes: number = 0
+): Promise<ChapterProgress> {
+  const [result] = await db.update(chapterProgress)
+    .set({
+      completed: true,
+      completedAt: new Date(),
+      assessmentScore,
+      practiceMinutes,
+      updatedAt: new Date(),
+    })
+    .where(and(
+      eq(chapterProgress.userId, userId),
+      eq(chapterProgress.chapterNumber, chapterNumber)
+    ))
+    .returning();
+  
+  if (!result) {
+    // Create if doesn't exist
+    const [newResult] = await db.insert(chapterProgress).values({
+      userId,
+      chapterNumber,
+      completed: true,
+      completedAt: new Date(),
+      assessmentScore,
+      practiceMinutes,
+    }).returning();
+    return newResult;
+  }
+  
+  return result;
+}
+
+// Chapter assessments
+export async function createChapterAssessment(
+  userId: string,
+  chapterNumber: number,
+  responses: any,
+  score: number,
+  passed: boolean
+): Promise<ChapterAssessment> {
+  const [result] = await db.insert(chapterAssessments).values({
+    userId,
+    chapterNumber,
+    responses,
+    score,
+    passed,
+  }).returning();
+  
+  return result;
+}
+
+export async function getChapterAssessments(userId: string, chapterNumber?: number): Promise<ChapterAssessment[]> {
+  let query = db.select().from(chapterAssessments).where(eq(chapterAssessments.userId, userId));
+  
+  if (chapterNumber) {
+    query = query.where(eq(chapterAssessments.chapterNumber, chapterNumber));
+  }
+  
+  return await query.orderBy(desc(chapterAssessments.completedAt));
+}
+
+// Book progression helpers
+export async function getUserBookProgress(userId: string): Promise<{
+  book1: { completed: number; total: number; unlocked: boolean };
+  book2: { completed: number; total: number; unlocked: boolean };
+  book3: { completed: number; total: number; unlocked: boolean };
+  book4: { completed: number; total: number; unlocked: boolean };
+  book5: { completed: number; total: number; unlocked: boolean };
+}> {
+  const progress = await getUserChapterProgress(userId);
+  const completed = progress.filter(p => p.completed).map(p => p.chapterNumber);
+  
+  const book1Completed = completed.filter(c => c >= 1 && c <= 5).length;
+  const book2Completed = completed.filter(c => c >= 6 && c <= 10).length;
+  const book3Completed = completed.filter(c => c >= 11 && c <= 15).length;
+  const book4Completed = completed.filter(c => c >= 16 && c <= 20).length;
+  const book5Completed = completed.filter(c => c >= 21 && c <= 27).length;
+  
+  return {
+    book1: { completed: book1Completed, total: 5, unlocked: true },
+    book2: { completed: book2Completed, total: 5, unlocked: book1Completed >= 5 },
+    book3: { completed: book3Completed, total: 5, unlocked: book2Completed >= 5 },
+    book4: { completed: book4Completed, total: 5, unlocked: book3Completed >= 5 },
+    book5: { completed: book5Completed, total: 7, unlocked: book4Completed >= 5 },
+  };
+}

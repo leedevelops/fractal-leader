@@ -8,9 +8,6 @@ import { Input } from "@/components/ui/input";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { useLocation } from "wouter";
-import Navigation from "@/components/ui/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface AssessmentModalProps {
   open: boolean;
@@ -111,7 +108,7 @@ const assessmentQuestions = [
   },
 ];
 
-function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
+export default function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
   const [step, setStep] = useState<'generation' | 'assessment' | 'results'>('generation');
   const [birthYear, setBirthYear] = useState<string>('');
   const [email, setEmail] = useState<string>('');
@@ -120,7 +117,6 @@ function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
   const [responses, setResponses] = useState<Record<number, string>>({});
   const [results, setResults] = useState<any>(null);
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
 
   const submitAssessmentMutation = useMutation({
     mutationFn: async (assessmentData: any) => {
@@ -208,19 +204,9 @@ function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
   };
 
   const handleStartJourney = () => {
-    // Show loading toast first
-    toast({
-      title: "Starting Your Journey... 🚀",
-      description: "Preparing your personalized biblical leadership matrix...",
-      duration: 3000,
-    });
-    
     onOpenChange(false);
-    
-    // Use SPA navigation instead of hard redirect for smoother UX
-    setTimeout(() => {
-      setLocation(`/matrix?chapter=1&archetype=${results.archetype}&generation=${results.generation}`);
-    }, 800);
+    // Redirect to Chapter 1
+    window.location.href = `/matrix?chapter=1&archetype=${results.archetype}&generation=${results.generation}`;
   };
 
   const renderGenerationStep = () => (
@@ -243,7 +229,6 @@ function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
             onChange={(e) => setBirthYear(e.target.value)}
             min="1920"
             max="2010"
-            data-testid="input-birth-year"
           />
         </div>
         
@@ -255,7 +240,6 @@ function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
             placeholder="your@email.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            data-testid="input-email"
           />
         </div>
       </div>
@@ -299,7 +283,7 @@ function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
           <RadioGroup value={selectedValue || ""} onValueChange={handleResponse}>
             {currentQuestionData.options.map((option) => (
               <div key={option.value} className="flex items-start space-x-3">
-                <RadioGroupItem value={option.value} id={option.value} className="mt-1" data-testid={`radio-${option.value}`} />
+                <RadioGroupItem value={option.value} id={option.value} className="mt-1" />
                 <Label 
                   htmlFor={option.value}
                   className="flex-1 p-4 bg-secondary/30 rounded-lg cursor-pointer hover:bg-secondary/50 transition-colors"
@@ -331,153 +315,4 @@ function AssessmentModal({ open, onOpenChange }: AssessmentModalProps) {
             </p>
           </div>
           
-          <div className="text-left p-4 bg-secondary/20 rounded-lg">
-            <h5 className="font-medium mb-2">Your Learning Approach:</h5>
-            <p className="text-sm text-muted-foreground">
-              {generationInfo[results.generation as keyof typeof generationInfo]?.approach}
-            </p>
-          </div>
-          
-          <p className="text-sm text-muted-foreground">
-            {results.message}
-          </p>
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] bg-background text-foreground">
-        <DialogHeader>
-          <DialogTitle>
-            {step === 'generation' && "Discover Your Leadership Style"}
-            {step === 'assessment' && "Leadership Assessment"}
-            {step === 'results' && "Assessment Complete!"}
-          </DialogTitle>
-        </DialogHeader>
-        
-        <div className="py-4">
-          {step === 'generation' && renderGenerationStep()}
-          {step === 'assessment' && renderAssessmentStep()}
-          {step === 'results' && renderResultsStep()}
-        </div>
-        
-        <div className="flex justify-between pt-4">
-          {step === 'generation' && (
-            <>
-              <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel">
-                Cancel
-              </Button>
-              <Button 
-                onClick={handleGenerationNext}
-                disabled={!birthYear || parseInt(birthYear) < 1920 || parseInt(birthYear) > 2010}
-                data-testid="button-generation-next"
-              >
-                Continue
-              </Button>
-            </>
-          )}
-          
-          {step === 'assessment' && (
-            <>
-              <Button variant="outline" onClick={handlePrevious} data-testid="button-previous">
-                Previous
-              </Button>
-              <Button 
-                onClick={handleNext}
-                disabled={!responses[assessmentQuestions[currentQuestion].id] || submitAssessmentMutation.isPending}
-                data-testid="button-next"
-              >
-                {currentQuestion === assessmentQuestions.length - 1 
-                  ? (submitAssessmentMutation.isPending ? "Processing..." : "Complete Assessment")
-                  : "Next"
-                }
-              </Button>
-            </>
-          )}
-          
-          {step === 'results' && (
-            <>
-              <Button variant="outline" onClick={resetAssessment} data-testid="button-restart">
-                Take Again
-              </Button>
-              <Button onClick={handleStartJourney} className="bg-cosmic-golden hover:bg-cosmic-golden/80" data-testid="button-start-journey">
-                Start Your Journey
-              </Button>
-            </>
-          )}
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-export default function Assessment() {
-  const [isModalOpen, setIsModalOpen] = useState(true);
-
-  return (
-    <div className="min-h-screen cosmic-gradient">
-      <Navigation />
-      
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-foreground mb-4">
-            Discover Your Biblical Leadership Archetype
-          </h1>
-          <p className="text-xl text-muted-foreground mb-8">
-            Uncover your unique leadership style rooted in biblical wisdom and generational insights
-          </p>
-        </div>
-
-        <div className="grid md:grid-cols-2 gap-8 mb-8">
-          <Card className="bg-card/50 backdrop-blur-sm border-border">
-            <CardHeader>
-              <CardTitle className="text-cosmic-golden">Personalized Assessment</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-muted-foreground mb-4">
-                Our assessment considers both your leadership style and generational perspective to provide personalized guidance.
-              </p>
-              <ul className="text-sm space-y-2">
-                <li>• Generation-specific learning approaches</li>
-                <li>• Biblical archetype identification</li>
-                <li>• Customized development path</li>
-                <li>• Team formation insights</li>
-              </ul>
-            </CardContent>
-          </Card>
-
-          <Card className="bg-card/50 backdrop-blur-sm border-border">
-            <CardHeader>
-              <CardTitle className="text-cosmic-golden">Four Leadership Archetypes</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3 text-sm">
-                <div><strong>Pioneer:</strong> Visionary leaders who break new ground</div>
-                <div><strong>Organizer:</strong> Relationship-builders who create unity</div>
-                <div><strong>Builder:</strong> Implementation-focused leaders who create lasting impact</div>
-                <div><strong>Guardian:</strong> Protective leaders who preserve values</div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="text-center">
-          <Button 
-            onClick={() => setIsModalOpen(true)}
-            className="bg-cosmic-golden hover:bg-cosmic-golden/80 text-black font-semibold px-8 py-3 text-lg"
-            data-testid="button-start-assessment"
-          >
-            Begin Assessment
-          </Button>
-        </div>
-      </div>
-
-      <AssessmentModal 
-        open={isModalOpen} 
-        onOpenChange={setIsModalOpen} 
-      />
-    </div>
-  );
-}
+          <div className="text-left

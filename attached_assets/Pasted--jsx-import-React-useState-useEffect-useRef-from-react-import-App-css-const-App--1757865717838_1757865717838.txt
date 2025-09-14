@@ -1,0 +1,337 @@
+```jsx
+import React, { useState, useEffect, useRef } from 'react';
+import './App.css';
+
+const App = () => {
+  const [currentLevel, setCurrentLevel] = useState(1);
+  const [userType, setUserType] = useState(null);
+  const [view, setView] = useState('landing'); // landing, assessment, levels
+  const matrixCanvasRef = useRef(null);
+
+  // Hebrew letters for levels
+  const hebrewLetters = 'אבגדהוזחטיכלמנסעפצקרשת';
+  const levels = Array.from({ length: 27 }, (_, i) => ({
+    id: i + 1,
+    book: Math.floor(i / 5) + 1,
+    letter: hebrewLetters[i % hebrewLetters.length],
+    categories: [
+      { name: 'Overview', items: Array(4).fill('Content') },
+      { name: 'Challenges', items: Array(4).fill('Puzzle') },
+      { name: 'Tools', items: Array(4).fill('Quiz') },
+      { name: 'Wrap-Up', items: Array(3).fill('Summary') },
+    ],
+  }));
+
+  // Matrix background
+  useEffect(() => {
+    const canvas = matrixCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    canvas.height = window.innerHeight;
+    canvas.width = window.innerWidth;
+    const fontSize = 20;
+    const columns = canvas.width / fontSize;
+    const drops = Array(Math.floor(columns)).fill(0);
+
+    const drawMatrix = () => {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#0f0';
+      ctx.font = `${fontSize}px monospace`;
+      drops.forEach((y, i) => {
+        const text = hebrewLetters.charAt(Math.floor(Math.random() * hebrewLetters.length));
+        const x = i * fontSize;
+        ctx.fillText(text, x, y);
+        if (y > canvas.height && Math.random() > 0.975) drops[i] = 0;
+        drops[i] += fontSize;
+      });
+    };
+    const interval = setInterval(drawMatrix, 50);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Load saved progress
+  useEffect(() => {
+    const savedLevel = localStorage.getItem('currentLevel');
+    const savedType = localStorage.getItem('userType');
+    if (savedLevel && savedType) {
+      setCurrentLevel(parseInt(savedLevel));
+      setUserType(savedType);
+      setView('levels');
+    }
+  }, []);
+
+  const startJourney = () => setView('assessment');
+
+  const handleAssessment = (e) => {
+    e.preventDefault();
+    const type = e.target.q1.value;
+    if (type) {
+      setUserType(type);
+      localStorage.setItem('userType', type);
+      localStorage.setItem('currentLevel', 1);
+      setView('levels');
+    } else {
+      alert('Please select a type!');
+    }
+  };
+
+  const nextLevel = () => {
+    if (currentLevel < 27) {
+      const newLevel = currentLevel + 1;
+      setCurrentLevel(newLevel);
+      localStorage.setItem('currentLevel', newLevel);
+    }
+  };
+
+  return (
+    <div>
+      <canvas ref={matrixCanvasRef} style={{ position: 'fixed', top: 0, left: 0, zIndex: -1 }} />
+      {view === 'landing' && (
+        <div className="landing">
+          <h1>Hebrew Leadership Journey</h1>
+          <p>Matrix-style Hebrew letters flow...</p>
+          <button onClick={startJourney}>Genesis Go</button>
+        </div>
+      )}
+      {view === 'assessment' && (
+        <div className="assessment">
+          <h2>Assessment</h2>
+          <p>Discover your leadership style!</p>
+          <form onSubmit={handleAssessment}>
+            <label>
+              <input type="radio" name="q1" value="leader" /> Leader
+            </label>
+            <label>
+              <input type="radio" name="q1" value="pioneer" /> Pioneer
+            </label>
+            <label>
+              <input type="radio" name="q1" value="organizer" /> Organizer
+            </label>
+            <br />
+            <button type="submit">Submit</button>
+          </form>
+          <button onClick={() => alert('Matrix Map: A visual guide to the 27 levels!')}>
+            View Matrix Map
+          </button>
+        </div>
+      )}
+      {view === 'levels' && (
+        <div className="level-view">
+          <h2>Level {currentLevel}</h2>
+          <CardDeck level={levels[currentLevel - 1]} nextLevel={nextLevel} />
+        </div>
+      )}
+    </div>
+  );
+};
+
+const CardDeck = ({ level, nextLevel }) => {
+  const [flipped, setFlipped] = useState(false);
+  const [currentCategory, setCurrentCategory] = useState(null);
+  const canvasRef = useRef(null);
+
+  useEffect(() => {
+    if (flipped) {
+      const canvas = canvasRef.current;
+      const ctx = canvas.getContext('2d');
+      const dots = getDotsForLetter(level.letter);
+      let currentDot = 0;
+      let drawing = false;
+      let path = [];
+
+      const drawDots = () => {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        dots.forEach((dot) => {
+          ctx.beginPath();
+          ctx.arc(dot.x, dot.y, 5, 0, 2 * Math.PI);
+          ctx.fillStyle = dot.num <= currentDot + 1 ? 'green' : 'gray';
+          ctx.fill();
+          ctx.fillText(dot.num, dot.x + 10, dot.y);
+        });
+        ctx.beginPath();
+        for (let i = 1; i < path.length; i++) {
+          ctx.moveTo(path[i - 1].x, path[i - 1].y);
+          ctx.lineTo(path[i].x, path[i].y);
+        }
+        ctx.strokeStyle = 'blue';
+        ctx.stroke();
+      };
+
+      const isNearDot = (x, y, dot) => {
+        return Math.sqrt((x - dot.x) ** 2 + (y - dot.y) ** 2) < 15;
+      };
+
+      const handleMouseDown = (e) => {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        if (currentDot < dots.length && isNearDot(x, y, dots[currentDot])) {
+          drawing = true;
+          path.push({ x, y });
+        }
+      };
+
+      const handleMouseMove = (e) => {
+        if (drawing) {
+          const rect = canvas.getBoundingClientRect();
+          const x = e.clientX - rect.left;
+          const y = e.clientY - rect.top;
+          if (isNearDot(x, y, dots[currentDot])) {
+            path.push(dots[currentDot]);
+            currentDot++;
+            if (currentDot === dots.length) {
+              drawing = false;
+              document.getElementById('next-level-btn').style.display = 'block';
+            }
+            drawDots();
+          }
+        }
+      };
+
+      const handleMouseUp = () => {
+        drawing = false;
+      };
+
+      canvas.addEventListener('mousedown', handleMouseDown);
+      canvas.addEventListener('mousemove', handleMouseMove);
+      canvas.addEventListener('mouseup', handleMouseUp);
+
+      drawDots();
+      return () => {
+        canvas.removeEventListener('mousedown', handleMouseDown);
+        canvas.removeEventListener('mousemove', handleMouseMove);
+        canvas.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [flipped, level.letter]);
+
+  const getDotsForLetter = (letter) => {
+    if (letter === 'א') {
+      return [
+        { x: 50, y: 50, num: 1 },
+        { x: 75, y: 100, num: 2 },
+        { x: 100, y: 150, num: 3 },
+        { x: 125, y: 100, num: 4 },
+        { x: 150, y: 50, num: 5 },
+      ];
+    }
+    return [{ x: 50, y: 50, num: 1 }]; // Fallback for other letters
+  };
+
+  return (
+    <div>
+      <div className={`card ${flipped ? 'flipped' : ''}`} onClick={() => setFlipped(!flipped)}>
+        <div className="card-front">{level.letter}</div>
+        <div className="card-back">
+          <canvas ref={canvasRef} width="150" height="150" />
+          <div className="category-tabs">
+            {level.categories.map((cat, i) => (
+              <button key={i} onClick={() => setCurrentCategory(i)}>
+                {cat.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+      {currentCategory !== null && (
+        <div className="category-content">
+          <h3>{level.categories[currentCategory].name}</h3>
+          <p>{level.categories[currentCategory].items.join(', ')}</p>
+        </div>
+      )}
+      <button id="next-level-btn" style={{ display: 'none' }} onClick={nextLevel}>
+        Next Level
+      </button>
+    </div>
+  );
+};
+
+export default App;
+```
+
+<xaiArtifact artifact_id="b9d9ddd0-5b6b-4412-b5af-af855424e87f" artifact_version_id="a0456197-ed8a-4b8f-8df6-38425b4b2e59" title="src/App.css" contentType="text/css">
+```css
+body {
+  font-family: Arial, sans-serif;
+  text-align: center;
+  background: #111;
+  color: #fff;
+  margin: 0;
+}
+.landing, .assessment, .level-view {
+  padding: 20px;
+}
+button {
+  padding: 15px 30px;
+  margin: 10px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+button:hover {
+  background: #218838;
+}
+.card {
+  width: 200px;
+  height: 300px;
+  background: #fff;
+  color: #000;
+  margin: 10px auto;
+  position: relative;
+  transition: transform 0.6s;
+  transform-style: preserve-3d;
+}
+.card.flipped {
+  transform: rotateY(180deg);
+}
+.card-front, .card-back {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card-back {
+  transform: rotateY(180deg);
+  background: #f0f0f0;
+  flex-direction: column;
+}
+canvas {
+  border: 2px solid #333;
+  background: #fff;
+}
+.category-tabs button {
+  margin: 5px;
+}
+.category-content {
+  margin-top: 20px;
+}
+#next-level-btn {
+  display: none;
+}
+```
+
+**Setup in Replit**:
+1. Create a new React project in Replit (use the React template).
+2. Replace `src/App.jsx` with the above code.
+3. Replace `src/App.css` with the above CSS.
+4. Run the project. If Replit lags, ensure you’re using a recent Node version (e.g., 16+). Check the console for errors if the canvas or transitions stall.
+
+**How It Works**:
+- **Landing**: Quick “Genesis Go” button to hit the assessment.
+- **Assessment**: One question (leader/pioneer/organizer) to set user type and jump to level 1.
+- **Card System**: Each level shows one card with a Hebrew letter. Click to flip, revealing a canvas for tracing (Aleph for now) and 4 category buttons. Tracing completes to unlock “Next Level.”
+- **Progress**: `localStorage` saves `currentLevel` and `userType`, so users pick up where they left off.
+- **Flow**: State-based (`useState` for `view`) avoids routing complexity, keeping Replit snappy.
+
+**Next Steps**:
+- **Expand Letters**: Add dot coordinates for more Hebrew letters in `getDotsForLetter`. Want me to provide a few (e.g., Bet, Gimel)?
+- **Categories**: The category buttons show a placeholder (`items.join`). Want to add a quiz form or drag-and-drop puzzle for one category?
+- **Matrix Background**: Already included but can be tweaked for performance (e.g., slower animation).
+- **Assessment**: Can refine further if you want more questions later.
+
+Which part do you want to dive into next—more letters for tracing, category quizzes/puzzles, or matrix background tweaks?
